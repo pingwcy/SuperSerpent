@@ -348,21 +348,225 @@ int dec() {
     return 0;
 
 }
+int enc_file() {
+    // 获取用户输入的密码
+    char password[256];
+    char input_path[256], output_path[256];
+
+    printf("Please enter password: ");
+    fflush(stdout);
+    if (fgets(password, sizeof(password), stdin) == NULL) {
+        fprintf(stderr, "Error reading password.\n");
+        return 1;
+    }
+    password[strcspn(password, "\n")] = '\0';
+
+    
+
+    printf("Enter input file path: ");
+    fflush(stdout);
+    if (fgets(input_path, sizeof(input_path), stdin) == NULL) {
+        fprintf(stderr, "Error reading input_path.\n");
+        return 1;
+    }
+    input_path[strcspn(input_path, "\n")] = '\0';
+
+    printf("Enter output file path: ");
+    fflush(stdout);
+    if (fgets(output_path, sizeof(output_path), stdin) == NULL) {
+        fprintf(stderr, "Error reading output_path.\n");
+        return 1;
+    }
+    output_path[strcspn(output_path, "\n")] = '\0';
+
+    uint8_t salt[16], iv[16], derived_key[32];
+    FILE* infile, * outfile;
+
+
+    // 生成 Salt 和 IV
+    if (get_random_bytes(salt, sizeof(salt)) != 0 || get_random_bytes(iv, sizeof(iv)) != 0) {
+        fprintf(stderr, "Failed to generate salt or IV.\n");
+        return 1;
+    }
+
+    // 生成 PBKDF2 密钥
+    PBKDF2_HMAC_Whirlpool((uint8_t*)password, strlen(password), salt, sizeof(salt), ITERATIONS, sizeof(derived_key), derived_key);
+
+    // Serpent 密钥调度
+    uint8_t ks[140 * 4];
+    serpent_set_key(derived_key, ks);
+
+    // 打开输入和输出文件
+    infile = fopen(input_path, "rb");
+    if (!infile) {
+        fprintf(stderr, "Error opening input file.\n");
+        return 1;
+    }
+    outfile = fopen(output_path, "wb");
+    if (!outfile) {
+        fprintf(stderr, "Error opening output file.\n");
+        fclose(infile);
+        return 1;
+    }
+
+    // 写入 Salt 和 IV
+    fwrite(salt, 1, sizeof(salt), outfile);
+    fwrite(iv, 1, sizeof(iv), outfile);
+
+    uint8_t buffer[BLOCK_SIZE], padded_block[BLOCK_SIZE];
+    size_t read_len;
+    uint8_t prev_cipher[BLOCK_SIZE];
+    memcpy(prev_cipher, iv, BLOCK_SIZE);  // 初始 IV
+
+    while ((read_len = fread(buffer, 1, BLOCK_SIZE, infile)) > 0) {
+        memset(padded_block, 0, BLOCK_SIZE);  // 关键修正，防止旧数据影响
+
+        // 仅对最后一块数据进行 PKCS#7 填充
+        if (read_len < BLOCK_SIZE) {
+            pkcs7_pad(buffer, read_len, padded_block, BLOCK_SIZE);
+        }
+        else {
+            memcpy(padded_block, buffer, BLOCK_SIZE);
+        }
+
+        // CBC XOR
+        for (size_t i = 0; i < BLOCK_SIZE; i++) {
+            padded_block[i] ^= prev_cipher[i];
+        }
+
+        // Serpent 加密
+        serpent_encrypt(padded_block, padded_block, ks);
+
+        // **更新 prev_cipher，确保存储的是当前密文**
+        memcpy(prev_cipher, padded_block, BLOCK_SIZE);
+
+        // 写入密文
+        fwrite(padded_block, 1, BLOCK_SIZE, outfile);
+    }
+
+    fclose(infile);
+    fclose(outfile);
+    return 0;
+}
+int dec_file() {
+    // 获取用户输入的密码
+    char password[256];
+    printf("Please enter password: ");
+    fflush(stdout);
+    if (fgets(password, sizeof(password), stdin) == NULL) {
+        fprintf(stderr, "Error reading password.\n");
+        return 1;
+    }
+    password[strcspn(password, "\n")] = '\0';
+
+
+    char input_path[256], output_path[256];
+
+    printf("Enter input file path: ");
+    fflush(stdout);
+    if (fgets(input_path, sizeof(input_path), stdin) == NULL) {
+        fprintf(stderr, "Error reading input_path.\n");
+        return 1;
+    }
+    input_path[strcspn(input_path, "\n")] = '\0';
+
+    printf("Enter output file path: ");
+    fflush(stdout);
+    if (fgets(output_path, sizeof(output_path), stdin) == NULL) {
+        fprintf(stderr, "Error reading output_path.\n");
+        return 1;
+    }
+    output_path[strcspn(output_path, "\n")] = '\0';
+
+    uint8_t salt[16], iv[16], derived_key[32];
+    FILE* infile, * outfile;
+
+
+    // 读取输入文件
+    infile = fopen(input_path, "rb");
+    if (!infile) {
+        fprintf(stderr, "Error opening input file.\n");
+        return 1;
+    }
+    outfile = fopen(output_path, "wb");
+    if (!outfile) {
+        fprintf(stderr, "Error opening output file.\n");
+        fclose(infile);
+        return 1;
+    }
+
+    // 读取 Salt 和 IV
+    fread(salt, 1, sizeof(salt), infile);
+    fread(iv, 1, sizeof(iv), infile);
+
+    // 生成 PBKDF2 密钥
+    PBKDF2_HMAC_Whirlpool((uint8_t*)password, strlen(password), salt, sizeof(salt), ITERATIONS, sizeof(derived_key), derived_key);
+
+    // Serpent 密钥调度
+    uint8_t ks[140 * 4];
+    serpent_set_key(derived_key, ks);
+
+    uint8_t buffer[BLOCK_SIZE], decrypted_block[BLOCK_SIZE];
+    uint8_t prev_cipher[BLOCK_SIZE];
+    memcpy(prev_cipher, iv, BLOCK_SIZE);
+    size_t read_len;
+
+    while ((read_len = fread(buffer, 1, BLOCK_SIZE, infile)) > 0) {
+        memcpy(decrypted_block, buffer, BLOCK_SIZE);
+
+        // 先解密
+        serpent_decrypt(decrypted_block, decrypted_block, ks);
+
+        // XOR 还原明文
+        for (size_t i = 0; i < BLOCK_SIZE; i++) {
+            decrypted_block[i] ^= prev_cipher[i];
+        }
+
+        memcpy(prev_cipher, buffer, BLOCK_SIZE);
+
+        // 移除 PKCS#7 填充（仅处理最后一块）
+        if (feof(infile)) {
+            size_t plain_len = pkcs7_unpad(decrypted_block, BLOCK_SIZE);
+            fwrite(decrypted_block, 1, plain_len, outfile);
+        }
+        else {
+            fwrite(decrypted_block, 1, BLOCK_SIZE, outfile);
+        }
+    }
+
+    fclose(infile);
+    fclose(outfile);
+    return 0;
+}
 int main() {
-    printf("SuperSerpent, PBKDF2 with Whirlpool, Iter 10000, salt 16, iv 16\n");
-    printf("Select function: \n1.Encryption\n2.Decryption\n");
-    char input[10];  // 用于存储用户输入
-    int sel;
-    fgets(input, sizeof(input), stdin);
-    if (input[0] == '1') {
-        if (enc() == 1) {
-            printf("Succerss encrypted");
+    do {
+        printf("SuperSerpent, PBKDF2 with Whirlpool, Iter 10000, salt 16, iv 16\n");
+        printf("Select function: \n1.Encryption\n2.Decryption\n3.Encrypt File\n4.Decrypt File\nMake selection: ");
+        char input[10];  // 用于存储用户输入
+        fgets(input, sizeof(input), stdin);
+        if (input[0] == '1') {
+            if (enc() == 0) {
+                printf("Succerss encrypted\n");
+            }
         }
-    }
-    else if(input[0] == '2'){
-        if (dec() == 1) {
-            printf("Succerss decrypted");
+        else if (input[0] == '2') {
+            if (dec() == 0) {
+                printf("Succerss decrypted\n");
+            }
         }
-    }
+        else if (input[0] == '3') {
+            if (enc_file() == 0) {
+                printf("Succerss encrypted\n");
+            }
+        }
+        else if (input[0] == '4') {
+            if (dec_file() == 0) {
+                printf("Succerss decrypted\n");
+            }
+        }
+        else {
+            break;
+        }
+    } while (1);
     return 0;
 }

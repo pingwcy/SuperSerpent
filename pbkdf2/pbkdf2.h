@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#define BLOCK_SIZE 64   // 512-bit Whirlpool 使用的块大小
+#define BLOCK_SIZE_WHIRLPOOL 64   // 512-bit Whirlpool 使用的块大小
 #define OUTPUT_SIZE 64  // 512-bit Whirlpool 哈希输出大小
 
 #include "whirlpool/Whirlpool.h"  // WHIRLPOOL_* API
