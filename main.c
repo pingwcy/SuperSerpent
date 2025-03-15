@@ -157,7 +157,7 @@ int enc() {
     // CBC 手动 XOR IV 和加密块
     unsigned char* ciphertext = (unsigned char*)malloc(padded_len);
     if (!ciphertext) {
-        free(padded_text);
+        //free(padded_text);
         //free(hex_key);
         return 1;
     }
@@ -526,7 +526,9 @@ int dec_file() {
 int main() {
     do {
         printf("SuperSerpent, PBKDF2 with Whirlpool, Iter 10000, salt 16, iv 16\n");
+        fflush(stdout);
         printf("Select function: \n1.Encryption\n2.Decryption\n3.Encrypt File\n4.Decrypt File\nMake selection: ");
+        fflush(stdout);
         char input[10];  // 用于存储用户输入
         fgets(input, sizeof(input), stdin);
         if (input[0] == '1') {
