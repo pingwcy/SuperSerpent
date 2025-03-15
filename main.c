@@ -27,15 +27,12 @@ int safe_fgets(char *buffer, size_t buffer_size) {
 }
 
 // PKCS#7 填充
-size_t pkcs7_pad(unsigned char* input, size_t len, unsigned char** output) {
+size_t pkcs7_pad(unsigned char* input, size_t len, unsigned char* output) {
     size_t pad_len = BLOCK_SIZE - (len % BLOCK_SIZE);
     size_t new_len = len + pad_len;
 
-    *output = (unsigned char*)malloc(new_len);
-    if (!*output) return 0;
-
-    memcpy(*output, input, len);
-    memset(*output + len, pad_len, pad_len);
+    memcpy(output, input, len);
+    memset(output + len, pad_len, pad_len);
 
     return new_len;
 }
@@ -72,7 +69,7 @@ int enc() {
     uint8_t salt[16], iv[16], derived_key[32];
     char password[256];
     char plaintext[1024]; // 用户输入的明文
-    unsigned char* padded_text;
+    //unsigned char* padded_text;
     size_t padded_len;
 
     // 获取用户输入的密码
@@ -135,13 +132,14 @@ int enc() {
     }
     printf("\n");
 
-    // PKCS#7 填充
-    padded_len = pkcs7_pad((unsigned char*)plaintext, plaintext_len, &padded_text);
+    unsigned char padded_text[256];  // 你需要定义一个足够大的缓冲区
+    padded_len = pkcs7_pad((unsigned char*)plaintext, plaintext_len, padded_text);
 
     if (!padded_len) {
-        fprintf(stderr, "Memory allocation error during padding.\n");
+        fprintf(stderr, "Padding error.\n");
         return 1;
     }
+
 
     // 打印填充后的数据（调试信息）
     printf("Padded text: ");
@@ -150,24 +148,11 @@ int enc() {
     }
     printf("\n");
 
-    // 初始化 Serpent 加密（ECB 模式）
-    //keyInstance keyI;
-    //cipherInstance cipherI;
-    //if (cipherInit(&cipherI, MODE_ECB, NULL) <= 0) {
-        //free(padded_text);
-        //return 1;
-    //}
-    // 初始化 Serpent 密钥调度
     uint8_t ks[140 * 4];  // Serpent 可能使用较大的密钥调度表
     serpent_set_key(derived_key, ks);
 
     // 将 derived_key 转换为 HEX 字符串
     char* hex_key = uint8_to_hex_string(derived_key, sizeof(derived_key));
-    //if (makeKey(&keyI, DIR_ENCRYPT, 256, hex_key) <= 0) {
-        //free(padded_text);
-        //free(hex_key);
-        //return 1;
-    //}
 
     // CBC 手动 XOR IV 和加密块
     unsigned char* ciphertext = (unsigned char*)malloc(padded_len);
@@ -221,7 +206,7 @@ int enc() {
     printf("Encrypted (Salt + IV + Ciphertext) HEX:\n%s\n", hex_output);
 
     // 释放内存
-    free(padded_text);
+    //free(padded_text);
     free(ciphertext);
     free(output);
     free(hex_output);
@@ -423,7 +408,7 @@ int enc_file() {
 
         // 仅对最后一块数据进行 PKCS#7 填充
         if (read_len < BLOCK_SIZE) {
-            pkcs7_pad(buffer, read_len, padded_block, BLOCK_SIZE);
+            pkcs7_pad(buffer, read_len, padded_block);
         }
         else {
             memcpy(padded_block, buffer, BLOCK_SIZE);
