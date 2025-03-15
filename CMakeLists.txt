@@ -9,12 +9,14 @@ set(SOURCE_DIR "${CMAKE_SOURCE_DIR}")
 add_library(rand STATIC ${SOURCE_DIR}/rand/rand.c)
 add_library(whirlpool STATIC ${SOURCE_DIR}/pbkdf2/whirlpool/Whirlpool.c)
 add_library(pbkdf2 STATIC ${SOURCE_DIR}/pbkdf2/pbkdf2.c)
-add_library(serpent STATIC ${SOURCE_DIR}/vcserpent/Serpent.c)
+add_library(serpent STATIC ${SOURCE_DIR}/vcserpent/SerpentFast.c)
+add_library(serpentsimd STATIC ${SOURCE_DIR}/vcserpent/SerpentFast_simd.cpp)
+
 add_executable(main ${SOURCE_DIR}/main.c)
 
 # 关键依赖
 target_link_libraries(pbkdf2 PUBLIC whirlpool)
-target_link_libraries(main PRIVATE rand pbkdf2 serpent)
+target_link_libraries(main PRIVATE rand pbkdf2 serpent serpentsimd)
 
 # Windows 设置
 if(WIN32)
@@ -23,6 +25,7 @@ if(WIN32)
     target_compile_options(whirlpool PRIVATE "/MT")
     target_compile_options(pbkdf2 PRIVATE "/MT")
     target_compile_options(serpent PRIVATE "/MT")
+    target_compile_options(serpentsimd PRIVATE "/MT")
     target_link_libraries(main PRIVATE AdvAPI32)
 endif()
 

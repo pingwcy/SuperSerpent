@@ -1,9 +1,11 @@
-#include "vcserpent/Serpent.h" 
+#include "vcserpent/SerpentFast.h" 
 #include "pbkdf2/pbkdf2.h"
 #include "rand/rand.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+//#define _CRTDBG_MAP_ALLOC
+//#include <crtdbg.h>
 
 #define BLOCK_SIZE 16    // 128-bit (16 bytes)
 #define ITERATIONS 10000 // PBKDF2 迭代次数
@@ -524,6 +526,8 @@ int dec_file() {
     return 0;
 }
 int main() {
+    //_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF); // 启用内存泄漏检测
+
     do {
         printf("SuperSerpent, PBKDF2 with Whirlpool, Iter 10000, salt 16, iv 16\n");
         fflush(stdout);
