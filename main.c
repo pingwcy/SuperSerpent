@@ -71,9 +71,9 @@ void ghash(const uint8_t* H, const uint8_t* data, size_t length, uint8_t* tag) {
 }
 
 // GCM 加密
-void gcm_encrypt(uint8_t* data, size_t length, const uint8_t* key, uint8_t* iv, uint8_t* tag) {
-	uint8_t counter[16];//计数器，分块只能128位
-	uint8_t keystream[16];//密钥流
+void gcm_encrypt(uint8_t* data, size_t length, const uint8_t* key, uint8_t* iv, uint8_t* tag, uint8_t* encrypted_data) {
+	uint8_t counter[16];  // 计数器，分块只能128位
+	uint8_t keystream[16];  // 密钥流
 	uint8_t H[16];  // H = E(K, 0)
 	memcpy(counter, iv, 16);
 
@@ -86,16 +86,17 @@ void gcm_encrypt(uint8_t* data, size_t length, const uint8_t* key, uint8_t* iv, 
 		encrypt_block(counter, keystream, key);
 
 		for (size_t j = 0; j < 16 && (i + j) < length; j++) {
-			data[i + j] ^= keystream[j];
+			encrypted_data[i + j] = data[i + j] ^ keystream[j];  // 存储加密后的数据
 		}
 
+		// 更新计数器
 		for (int j = 15; j >= 0; j--) {
 			if (++counter[j]) break;
 		}
 	}
 
 	// 计算 GHASH 认证标签
-	ghash(H, data, length, tag);
+	ghash(H, encrypted_data, length, tag);  // 使用加密后的数据进行认证
 
 	// 认证标签加密
 	encrypt_block(tag, tag, key);
@@ -345,6 +346,7 @@ int enc(int mode) {
 		free(hex_key);
 	}
 	else if (mode == 1) {
+
 		uint_8t nonce[NONCE_SIZE], tag[TAG_SIZE];
 		// 生成随机 nonce
 		if (get_random_bytes(nonce, sizeof(nonce)) != 0) {
@@ -358,8 +360,16 @@ int enc(int mode) {
 			printf("%02x", nonce[i]);
 		}
 		printf("\n");
-		gcm_encrypt((unsigned char*)plaintext, plaintext_len, derived_key, nonce, tag);
 
+		unsigned char* encrypted_text = (unsigned char*)malloc(plaintext_len);
+		if (!encrypted_text) {
+			fprintf(stderr, "Memory allocation failed for encrypted text.\n");
+			return 1;
+		}
+
+
+		gcm_encrypt((unsigned char*)plaintext, plaintext_len, derived_key, nonce, tag, encrypted_text);
+		
 		printf("Encrypted: ");
 		for (size_t i = 0; i < plaintext_len; i++) printf("%02X ", plaintext[i]);
 		printf("\nTag: ");
@@ -372,7 +382,7 @@ int enc(int mode) {
 		memcpy(output, salt, sizeof(salt));
 		memcpy(output + sizeof(salt), nonce, sizeof(nonce));
 		memcpy(output + sizeof(salt) + sizeof(nonce), tag, sizeof(tag));
-		memcpy(output + sizeof(salt) + sizeof(nonce) + sizeof(tag), plaintext, plaintext_len);
+		memcpy(output + sizeof(salt) + sizeof(nonce) + sizeof(tag), encrypted_text, plaintext_len);
 
 		// 转换成 HEX 输出
 		char* hex_output = uint8_to_hex_string(output, total_len);
@@ -675,6 +685,8 @@ static int enc_file(int mode) {
 
 		uint8_t salt[SALT_SIZE], nonce[NONCE_SIZE], tag[TAG_SIZE], derived_key[KEY_SIZE];
 		uint8_t* buffer = (uint8_t*)malloc(GCM_BLOCK_SIZE);
+		uint8_t* cipher = (uint8_t*)malloc(GCM_BLOCK_SIZE);
+
 		if (!buffer)  
 		{
 			// 代码逻辑...
@@ -711,12 +723,12 @@ static int enc_file(int mode) {
 			if (get_random_bytes(nonce, NONCE_SIZE) != 0) handle_error("Failed to generate nonce");
 
 			// 加密
-			gcm_encrypt(buffer, bytes_read, derived_key, nonce, tag);
+			gcm_encrypt(buffer, bytes_read, derived_key, nonce, tag, cipher);
 
 			// 写入 Nonce, Tag, Ciphertext
 			fwrite(nonce, 1, 12, outfile);
 			fwrite(tag, 1, 16, outfile);
-			fwrite(buffer, 1, bytes_read, outfile);
+			fwrite(cipher, 1, bytes_read, outfile);
 
 			printf("nonce: ");
 			for (size_t i = 0; i < sizeof(nonce); i++) {
@@ -733,7 +745,7 @@ static int enc_file(int mode) {
 
 		}
 		free(buffer);
-		//free(bytes_read);
+		free(cipher);
 		fclose(outfile);
 		fclose(infile);
 
