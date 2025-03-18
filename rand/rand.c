@@ -1,14 +1,27 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
+#include <stdint.h>
+#include <string.h>
 
 #ifdef _WIN32
 #include <windows.h>
-#include <wincrypt.h>  // 包含CryptGenRandom的头文件
+#include <wincrypt.h>
 #else
-#include <fcntl.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/syscall.h>
+#include <sys/time.h>
 #endif
 
+#ifdef __x86_64__
+#include <x86intrin.h>
+#elif defined(__aarch64__) || defined(__arm__)
+#include <sys/auxv.h>
+#endif
+
+// 获取随机字节（主要熵源）
 int get_random_bytes(void *buf, size_t len) {
 #ifdef _WIN32
     HCRYPTPROV hProvider = 0;
@@ -20,12 +33,102 @@ int get_random_bytes(void *buf, size_t len) {
         return -1;
     }
     CryptReleaseContext(hProvider, 0);
-    return 0;
 #else
     int fd = open("/dev/urandom", O_RDONLY);
     if (fd == -1) return -1;
     ssize_t result = read(fd, buf, len);
     close(fd);
-    return (result == len) ? 0 : -1;
+    if (result != len) return -1;
 #endif
+    return 0;
 }
+
+// 增加时间熵
+void mix_time_entropy(unsigned char *buf, size_t len) {
+    uint64_t t = 0;
+
+#ifdef _WIN32  // Windows 平台
+    LARGE_INTEGER counter;
+    QueryPerformanceCounter(&counter);  // 获取高精度计时器的当前值
+    t = counter.QuadPart;               // 使用计时器的当前值
+#else  // 类 Unix 系统（Linux, macOS 等）
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);  // 获取单调时钟的时间
+    t = ts.tv_sec ^ ts.tv_nsec;           // 计算时间戳
+#endif
+
+    // 混合时间戳到缓冲区
+    for (size_t i = 0; i < len; i++) {
+        buf[i] ^= (t >> (i % sizeof(t))) & 0xFF;
+    }
+}
+
+// 增加 CPU 时间戳熵
+void mix_cpu_entropy(unsigned char *buf, size_t len) {
+#if defined(__x86_64__) || defined(__i386__)
+    uint64_t tsc = __rdtsc();
+#elif defined(__aarch64__) || defined(__arm__)
+    uint64_t tsc = (uint64_t)getauxval(AT_RANDOM);
+#else
+    uint64_t tsc = (uint64_t)clock();
+#endif
+    for (size_t i = 0; i < len; i++) {
+        buf[i] ^= (tsc >> (i % sizeof(tsc))) & 0xFF;
+    }
+}
+
+// 增加进程 ID 和线程 ID 熵
+void mix_pid_entropy(unsigned char *buf, size_t len) {
+    #ifdef _WIN32  // Windows 平台
+        DWORD pid = GetCurrentProcessId();  // 获取进程 ID
+        DWORD tid = GetCurrentThreadId();   // 获取线程 ID
+    #else  // 类 Unix 系统（Linux, macOS 等）
+        pid_t pid = getpid();  // 获取进程 ID
+        pid_t tid = 0;  // 默认初始化为 0
+
+        #ifdef __linux__
+        tid = syscall(SYS_gettid);  // Linux 使用 syscall 获取线程 ID
+        #elif defined(__FreeBSD__)
+        tid = (pid_t)thr_self();  // FreeBSD 使用 thr_self 获取线程 ID
+        #elif defined(__APPLE__)
+        tid = (pid_t)pthread_self();  // macOS 使用 pthread_self 获取线程 ID
+        #endif
+    #endif
+    
+    uint64_t id_mix = (uint64_t)pid ^ (uint64_t)tid;  // 混合进程 ID 和线程 ID
+    
+    for (size_t i = 0; i < len; i++) {
+        buf[i] ^= (id_mix >> (i % sizeof(id_mix))) & 0xFF;  // 混合 ID 到缓冲区
+    }
+}
+
+// 组合多种熵源
+void enhance_entropy(unsigned char *buf, size_t len) {
+    mix_time_entropy(buf, len);
+    mix_cpu_entropy(buf, len);
+    mix_pid_entropy(buf, len);
+}
+
+int secure_random(void *buf, size_t len) {
+    if (get_random_bytes(buf, len) != 0) {
+        return -1;
+    }
+    enhance_entropy(buf, len);
+    return 0;
+}
+
+/*
+int main() {
+    unsigned char rand_buf[16];
+    if (secure_random(rand_buf, sizeof(rand_buf)) == 0) {
+        printf("Generated random bytes: ");
+        for (size_t i = 0; i < sizeof(rand_buf); i++) {
+            printf("%02x ", rand_buf[i]);
+        }
+        printf("\n");
+    } else {
+        printf("Failed to generate random bytes\n");
+    }
+    return 0;
+}
+*/

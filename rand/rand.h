@@ -16,6 +16,7 @@ extern "C" {
  */
 int get_random_bytes(void *buf, size_t len);
 
+int secure_random(void *buf, size_t len);
 #ifdef __cplusplus
 }
 #endif

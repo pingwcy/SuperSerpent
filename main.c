@@ -225,7 +225,7 @@ int enc(int mode) {
 	//printf("Plaintext: %s\n", plaintext);
 
 	// 生成 Salt
-	if (get_random_bytes(salt, sizeof(salt)) != 0) {
+	if (secure_random(salt, sizeof(salt)) != 0) {
 		fprintf(stderr, "Failed to generate salt.\n");
 		return 1;
 	}
@@ -249,7 +249,7 @@ int enc(int mode) {
 
 	if (mode == 0) {
 		// 生成随机 IV
-		if (get_random_bytes(iv, sizeof(iv)) != 0) {
+		if (secure_random(iv, sizeof(iv)) != 0) {
 			fprintf(stderr, "Failed to generate IV.\n");
 			return 1;
 		}
@@ -347,7 +347,7 @@ int enc(int mode) {
 		//uint8_t* buffer = (uint8_t*)malloc(GCM_BLOCK_SIZE);
 
 		// 生成随机 nonce
-		if (get_random_bytes(nonce, sizeof(nonce)) != 0) {
+		if (secure_random(nonce, sizeof(nonce)) != 0) {
 			fprintf(stderr, "Failed to generate nonce.\n");
 			return 1;
 		}
@@ -628,7 +628,7 @@ static int enc_file(int mode) {
 	if (mode == 0) {
 		uint8_t salt[SALT_SIZE], iv[IV_SIZE], derived_key[KEY_SIZE], nonce[NONCE_SIZE];
 		// 生成 Salt 和 IV
-		if (get_random_bytes(salt, sizeof(salt)) != 0 || get_random_bytes(iv, sizeof(iv)) != 0) {
+		if (secure_random(salt, sizeof(salt)) != 0 || secure_random(iv, sizeof(iv)) != 0) {
 			fprintf(stderr, "Failed to generate salt or IV.\n");
 			return 1;
 		}
@@ -694,7 +694,7 @@ static int enc_file(int mode) {
 
 
 		// 生成随机 Salt
-		if (get_random_bytes(salt, SALT_SIZE) != 0) handle_error("Failed to generate salt");
+		if (secure_random(salt, SALT_SIZE) != 0) handle_error("Failed to generate salt");
 
 		// 生成 PBKDF2 密钥
 		PBKDF2_HMAC_Whirlpool((uint8_t*)password, strlen(password), salt, SALT_SIZE, ITERATIONS, KEY_SIZE, derived_key);
@@ -718,7 +718,7 @@ static int enc_file(int mode) {
 		size_t bytes_read;
 		while ((bytes_read = fread(buffer, 1, GCM_BLOCK_SIZE, infile)) > 0) {
 			// 生成随机 Nonce
-			if (get_random_bytes(nonce, NONCE_SIZE) != 0) handle_error("Failed to generate nonce");
+			if (secure_random(nonce, NONCE_SIZE) != 0) handle_error("Failed to generate nonce");
 
 			// 加密
 			gcm_encrypt(buffer, bytes_read, derived_key, nonce, tag, cipher);
