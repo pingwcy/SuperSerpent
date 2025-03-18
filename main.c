@@ -70,15 +70,17 @@ void ghash(const uint8_t* H, const uint8_t* data, size_t length, uint8_t* tag) {
 	memcpy(tag, Y, 16);
 }
 
-// GCM 加密
-void gcm_encrypt(uint8_t* data, size_t length, const uint8_t* key, uint8_t* iv, uint8_t* tag, uint8_t* encrypted_data) {
-	uint8_t counter[16];  // 计数器，分块只能128位
-	uint8_t keystream[16];  // 密钥流
-	uint8_t H[16];  // H = E(K, 0)
-	memcpy(counter, iv, 16);
+// 修正 GCM 加密函数
+void gcm_encrypt(const uint8_t* data, size_t length, const uint8_t* key, uint8_t* iv, uint8_t* tag, uint8_t* encrypted_data) {
+	uint8_t counter[16] = { 0 };  // 计数器，初始化为 0
+	uint8_t keystream[16];
+	uint8_t H[16] = { 0 };  // H = E(K, 0)
+
+	// 确保 nonce 仅 12 字节，并正确设置计数器
+	memcpy(counter, iv, 12);  // 只复制 12 字节
+	counter[15] = 1;  // GCM 规范要求从 1 开始
 
 	// 计算 H
-	memset(H, 0, 16);
 	encrypt_block(H, H, key);
 
 	// 加密数据
@@ -86,45 +88,38 @@ void gcm_encrypt(uint8_t* data, size_t length, const uint8_t* key, uint8_t* iv, 
 		encrypt_block(counter, keystream, key);
 
 		for (size_t j = 0; j < 16 && (i + j) < length; j++) {
-			encrypted_data[i + j] = data[i + j] ^ keystream[j];  // 存储加密后的数据
+			encrypted_data[i + j] = data[i + j] ^ keystream[j];
 		}
 
-		// 更新计数器
+		// 更新计数器（正确处理溢出）
 		for (int j = 15; j >= 0; j--) {
 			if (++counter[j]) break;
 		}
 	}
 
 	// 计算 GHASH 认证标签
-	ghash(H, encrypted_data, length, tag);  // 使用加密后的数据进行认证
-
-	// 认证标签加密
+	ghash(H, encrypted_data, length, tag);
 	encrypt_block(tag, tag, key);
 }
 
-// GCM 解密
+// 修正 GCM 解密函数
 int gcm_decrypt(uint8_t* data, size_t length, const uint8_t* key, uint8_t* iv, uint8_t* tag) {
-	uint8_t counter[16];//同理
+	uint8_t counter[16] = { 0 };
 	uint8_t keystream[16];
-	uint8_t H[16];
+	uint8_t H[16] = { 0 };
 	uint8_t computed_tag[TAG_SIZE];
 
-	memcpy(counter, iv, 16);
+	memcpy(counter, iv, 12);
+	counter[15] = 1;
 
-	// 计算 H
-	memset(H, 0, 16);
 	encrypt_block(H, H, key);
-
-	// 计算 GHASH 认证标签
 	ghash(H, data, length, computed_tag);
 	encrypt_block(computed_tag, computed_tag, key);
 
-	// 验证认证标签
 	if (memcmp(computed_tag, tag, TAG_SIZE) != 0) {
 		return -1;  // 认证失败
 	}
 
-	// 解密数据
 	for (size_t i = 0; i < length; i += 16) {
 		encrypt_block(counter, keystream, key);
 
@@ -137,8 +132,9 @@ int gcm_decrypt(uint8_t* data, size_t length, const uint8_t* key, uint8_t* iv, u
 		}
 	}
 
-	return 0; // 解密成功
+	return 0;
 }
+
 //清除掉用户输出的换行符等等
 void clear_input_buffer() {
 	int c;
@@ -348,6 +344,8 @@ int enc(int mode) {
 	else if (mode == 1) {
 
 		uint_8t nonce[NONCE_SIZE], tag[TAG_SIZE];
+		//uint8_t* buffer = (uint8_t*)malloc(GCM_BLOCK_SIZE);
+
 		// 生成随机 nonce
 		if (get_random_bytes(nonce, sizeof(nonce)) != 0) {
 			fprintf(stderr, "Failed to generate nonce.\n");
