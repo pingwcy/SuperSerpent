@@ -18,18 +18,18 @@
 #define KEY_SIZE 32
 
 //The function to print out error messgae
-void handle_error(const char* msg) {
+static void handle_error(const char* msg) {
 	fprintf(stderr, "%s\n", msg);
 	//exit(1);
 }
 //Wrapper of the Serpent encrypt for GCM mode
-void encrypt_block(const uint8_t* input, uint8_t* output, const uint8_t* key) {
+static void encrypt_block(const uint8_t* input, uint8_t* output, const uint8_t* key) {
 	uint8_t ks[140 * 4];  // Serpent 可能使用较大的密钥调度表
 	serpent_set_key(key, ks);  // 初始化密钥调度表
 	serpent_encrypt(input, output, ks);  // 用密钥调度表加密
 }
 // GF(2^128) 乘法（Galois 字段乘法）,for GCM MODE
-void galois_mult(const uint8_t* X, const uint8_t* Y, uint8_t* result) {
+static void galois_mult(const uint8_t* X, const uint8_t* Y, uint8_t* result) {
 	uint8_t Z[16] = { 0 };
 	uint8_t V[16];
 	memcpy(V, Y, 16);
@@ -56,7 +56,7 @@ void galois_mult(const uint8_t* X, const uint8_t* Y, uint8_t* result) {
 }
 
 // GHASH 计算, for GCM
-void ghash(const uint8_t* H, const uint8_t* data, size_t length, uint8_t* tag) {
+static void ghash(const uint8_t* H, const uint8_t* data, size_t length, uint8_t* tag) {
 	uint8_t Y[16] = { 0 };
 	uint8_t temp[16];
 
@@ -70,8 +70,10 @@ void ghash(const uint8_t* H, const uint8_t* data, size_t length, uint8_t* tag) {
 	memcpy(tag, Y, 16);
 }
 
+
+
 // 修正 GCM 加密函数
-void gcm_encrypt(const uint8_t* data, size_t length, const uint8_t* key, uint8_t* iv, uint8_t* tag, uint8_t* encrypted_data) {
+static void gcm_encrypt(const uint8_t* data, size_t length, const uint8_t* key, uint8_t* iv, uint8_t* tag, uint8_t* encrypted_data) {
 	uint8_t counter[16] = { 0 };  // 计数器，初始化为 0
 	uint8_t keystream[16];
 	uint8_t H[16] = { 0 };  // H = E(K, 0)
@@ -103,7 +105,7 @@ void gcm_encrypt(const uint8_t* data, size_t length, const uint8_t* key, uint8_t
 }
 
 // 修正 GCM 解密函数
-int gcm_decrypt(uint8_t* data, size_t length, const uint8_t* key, uint8_t* iv, uint8_t* tag) {
+static int gcm_decrypt(uint8_t* data, size_t length, const uint8_t* key, uint8_t* iv, uint8_t* tag) {
 	uint8_t counter[16] = { 0 };
 	uint8_t keystream[16];
 	uint8_t H[16] = { 0 };
@@ -136,14 +138,14 @@ int gcm_decrypt(uint8_t* data, size_t length, const uint8_t* key, uint8_t* iv, u
 }
 
 //清除掉用户输出的换行符等等
-void clear_input_buffer() {
+static void clear_input_buffer() {
 	int c;
 	while ((c = getchar()) != '\n' && c != EOF) {
 		// 忽略所有剩余的字符直到换行或文件结束
 	}
 }
 //包装一下获取输入
-int safe_fgets(char* buffer, size_t buffer_size) {
+static int safe_fgets(char* buffer, size_t buffer_size) {
 	if (fgets(buffer, buffer_size, stdin) == NULL) {
 		return 0; // 输入失败
 	}
@@ -155,7 +157,7 @@ int safe_fgets(char* buffer, size_t buffer_size) {
 }
 
 // PKCS#7 填充
-size_t pkcs7_pad(unsigned char* input, size_t len, unsigned char* output) {
+static size_t pkcs7_pad(unsigned char* input, size_t len, unsigned char* output) {
 	size_t pad_len = BLOCK_SIZE - (len % BLOCK_SIZE);
 	size_t new_len = len + pad_len;
 
@@ -166,7 +168,7 @@ size_t pkcs7_pad(unsigned char* input, size_t len, unsigned char* output) {
 }
 
 // 移除 PKCS#7 填充
-size_t pkcs7_unpad(unsigned char* data, size_t len) {
+static size_t pkcs7_unpad(unsigned char* data, size_t len) {
 	if (len == 0) return 0;
 	uint8_t pad_len = data[len - 1];
 	if (pad_len > BLOCK_SIZE || pad_len == 0) return len; // 防止错误填充
@@ -177,14 +179,14 @@ size_t pkcs7_unpad(unsigned char* data, size_t len) {
 }
 
 // HEX 转换为 uint8_t 数组
-void hex_to_uint8(const char* hex, uint8_t* output, size_t len) {
+static void hex_to_uint8(const char* hex, uint8_t* output, size_t len) {
 	for (size_t i = 0; i < len; i++) {
 		sscanf(hex + 2 * i, "%2hhx", &output[i]);
 	}
 }
 
 // 转换 uint8_t 数组为 HEX 字符串
-char* uint8_to_hex_string(uint8_t* data, size_t len) {
+static char* uint8_to_hex_string(uint8_t* data, size_t len) {
 	char* hex_string = (char*)malloc(len * 2 + 1);
 	if (!hex_string) return NULL;
 
@@ -194,7 +196,7 @@ char* uint8_to_hex_string(uint8_t* data, size_t len) {
 	return hex_string;
 }
 //字符串加密函数
-int enc(int mode) {
+static int enc(int mode) {
 	uint8_t salt[SALT_SIZE], iv[IV_SIZE], derived_key[KEY_SIZE];
 	char password[256];
 	char plaintext[1024]; // 用户输入的明文
@@ -385,12 +387,14 @@ int enc(int mode) {
 		// 转换成 HEX 输出
 		char* hex_output = uint8_to_hex_string(output, total_len);
 		printf("Encrypted (Salt + nonce + Ciphertext) HEX:\n%s\n", hex_output);
-
+		free(output);
+		free(hex_output);
+		free(encrypted_text);
 	}
 	return 0;
 
 }
-int dec(int mode) {
+static int dec(int mode) {
 	uint8_t salt[SALT_SIZE], iv[IV_SIZE], tag[TAG_SIZE], nonce[NONCE_SIZE], derived_key[KEY_SIZE];
 	char password[256];
 	char hex_input[4096]; // 用户输入的 HEX 密文
@@ -563,7 +567,7 @@ int dec(int mode) {
 		// 输出解密后的明文
 		if (gcm_decrypt(ciphertext, ciphertext_len, derived_key, nonce, tag) == 0) {
 			// 添加 NULL 终止符
-			ciphertext[ciphertext_len] = '\0';
+			//ciphertext[ciphertext_len] = '\0';
 			printf("Decrypted: ");
 			for (size_t i = 0; i < ciphertext_len; i++) {
 				printf("%c", ciphertext[i]);
@@ -750,7 +754,7 @@ static int enc_file(int mode) {
 	}
 	return 0;
 }
-int dec_file(int mode) {
+static int dec_file(int mode) {
 	// 获取用户输入的密码
 	char password[256];
 	printf("Please enter password: ");

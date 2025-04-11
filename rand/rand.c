@@ -44,7 +44,7 @@ int get_random_bytes(void *buf, size_t len) {
 }
 
 // 增加时间熵
-void mix_time_entropy(unsigned char *buf, size_t len) {
+static void mix_time_entropy(unsigned char *buf, size_t len) {
     uint64_t t = 0;
 
 #ifdef _WIN32  // Windows 平台
@@ -64,7 +64,7 @@ void mix_time_entropy(unsigned char *buf, size_t len) {
 }
 
 // 增加 CPU 时间戳熵
-void mix_cpu_entropy(unsigned char *buf, size_t len) {
+static void mix_cpu_entropy(unsigned char *buf, size_t len) {
 #if defined(__x86_64__) || defined(__i386__)
     uint64_t tsc = __rdtsc();
 #elif defined(__aarch64__) || defined(__arm__)
@@ -78,7 +78,7 @@ void mix_cpu_entropy(unsigned char *buf, size_t len) {
 }
 
 // 增加进程 ID 和线程 ID 熵
-void mix_pid_entropy(unsigned char *buf, size_t len) {
+static void mix_pid_entropy(unsigned char *buf, size_t len) {
     #ifdef _WIN32  // Windows 平台
         DWORD pid = GetCurrentProcessId();  // 获取进程 ID
         DWORD tid = GetCurrentThreadId();   // 获取线程 ID
@@ -103,7 +103,7 @@ void mix_pid_entropy(unsigned char *buf, size_t len) {
 }
 
 // 组合多种熵源
-void enhance_entropy(unsigned char *buf, size_t len) {
+static void enhance_entropy(unsigned char *buf, size_t len) {
     mix_time_entropy(buf, len);
     mix_cpu_entropy(buf, len);
     mix_pid_entropy(buf, len);

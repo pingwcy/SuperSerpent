@@ -639,7 +639,7 @@ static const uint64 Whirlpool_C[8*256+R] = {
 
 
 // Whirlpool basic transformation. Transforms state based on block.
-void WhirlpoolTransform(uint64 *digest, const uint64 *block)
+static void WhirlpoolTransform(uint64 *digest, const uint64 *block)
 {
 #if CRYPTOPP_BOOL_SSE2_ASM_AVAILABLE
 #if defined(__GNUC__) && (CRYPTOPP_GCC_VERSION <= 40407)
