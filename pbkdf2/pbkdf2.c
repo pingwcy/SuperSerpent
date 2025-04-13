@@ -3,34 +3,33 @@
 #include <string.h>
 #include <stdint.h>
 #include "pbkdf2.h"
-//#define BLOCK_SIZE 64   // 512-bit = 64 bytes
-//#define OUTPUT_SIZE 64  // 512-bit Whirlpool 输出
+#include "../params.h"
 #include "whirlpool/Whirlpool.h"  // 假设 WHIRLPOOL_* API 定义在这个头文件中
 
 void HMAC_Whirlpool(const uint8_t* key, size_t key_len,
 	const uint8_t* message, size_t message_len,
 	uint8_t* output) {
-	uint8_t key_block[BLOCK_SIZE_WHIRLPOOL];  // 关键块
-	uint8_t o_key_pad[BLOCK_SIZE_WHIRLPOOL];  // 外部填充
-	uint8_t i_key_pad[BLOCK_SIZE_WHIRLPOOL];  // 内部填充
-	uint8_t inner_hash[OUTPUT_SIZE]; // 内部哈希结果
+	uint8_t key_block[BLOCK_SIZE_WHIRLPOOL_SLOTH];  // 关键块
+	uint8_t o_key_pad[BLOCK_SIZE_WHIRLPOOL_SLOTH];  // 外部填充
+	uint8_t i_key_pad[BLOCK_SIZE_WHIRLPOOL_SLOTH];  // 内部填充
+	uint8_t inner_hash[OUTPUT_SIZE_SLOTH]; // 内部哈希结果
 	int i;
 
 	// 1. 处理密钥
-	if (key_len > BLOCK_SIZE_WHIRLPOOL) {
+	if (key_len > BLOCK_SIZE_WHIRLPOOL_SLOTH) {
 		WHIRLPOOL_CTX key_ctx;
 		WHIRLPOOL_init(&key_ctx);
 		WHIRLPOOL_add(key, key_len, &key_ctx);
 		WHIRLPOOL_finalize(&key_ctx, key_block);
-		memset(key_block + OUTPUT_SIZE, 0, BLOCK_SIZE_WHIRLPOOL - OUTPUT_SIZE);
+		memset(key_block + OUTPUT_SIZE_SLOTH, 0, BLOCK_SIZE_WHIRLPOOL_SLOTH - OUTPUT_SIZE_SLOTH);
 	}
 	else {
 		memcpy(key_block, key, key_len);
-		memset(key_block + key_len, 0, BLOCK_SIZE_WHIRLPOOL - key_len);
+		memset(key_block + key_len, 0, BLOCK_SIZE_WHIRLPOOL_SLOTH - key_len);
 	}
 
 	// 2. 生成 o_key_pad 和 i_key_pad
-	for (i = 0; i < BLOCK_SIZE_WHIRLPOOL; i++) {
+	for (i = 0; i < BLOCK_SIZE_WHIRLPOOL_SLOTH; i++) {
 		o_key_pad[i] = key_block[i] ^ 0x5c;  // 外部填充
 		i_key_pad[i] = key_block[i] ^ 0x36;  // 内部填充
 	}
@@ -38,15 +37,15 @@ void HMAC_Whirlpool(const uint8_t* key, size_t key_len,
 	// 3. 计算内部哈希：hash(i_key_pad + message)
 	WHIRLPOOL_CTX inner_ctx;
 	WHIRLPOOL_init(&inner_ctx);
-	WHIRLPOOL_add(i_key_pad, BLOCK_SIZE_WHIRLPOOL, &inner_ctx);
+	WHIRLPOOL_add(i_key_pad, BLOCK_SIZE_WHIRLPOOL_SLOTH, &inner_ctx);
 	WHIRLPOOL_add(message, message_len, &inner_ctx);
 	WHIRLPOOL_finalize(&inner_ctx, inner_hash);
 
 	// 4. 计算外部哈希：hash(o_key_pad + inner_hash)
 	WHIRLPOOL_CTX outer_ctx;
 	WHIRLPOOL_init(&outer_ctx);
-	WHIRLPOOL_add(o_key_pad, BLOCK_SIZE_WHIRLPOOL, &outer_ctx);
-	WHIRLPOOL_add(inner_hash, OUTPUT_SIZE, &outer_ctx);
+	WHIRLPOOL_add(o_key_pad, BLOCK_SIZE_WHIRLPOOL_SLOTH, &outer_ctx);
+	WHIRLPOOL_add(inner_hash, OUTPUT_SIZE_SLOTH, &outer_ctx);
 	WHIRLPOOL_finalize(&outer_ctx, output);
 }
 
@@ -55,9 +54,9 @@ void PBKDF2_HMAC_Whirlpool(const uint8_t* password, int password_len,
 	const uint8_t* salt, int salt_len,
 	int iterations, int key_len,
 	uint8_t* output) {
-	int hash_len = OUTPUT_SIZE;
+	int hash_len = OUTPUT_SIZE_SLOTH;
 	int block_count = (key_len + hash_len - 1) / hash_len; // 计算需要多少块
-	uint8_t U[OUTPUT_SIZE], T[OUTPUT_SIZE];
+	uint8_t U[OUTPUT_SIZE_SLOTH], T[OUTPUT_SIZE_SLOTH];
 
 	for (int i = 1; i <= block_count; i++) {
 		// 动态分配 salt_block，避免固定大小问题
