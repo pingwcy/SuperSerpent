@@ -12,7 +12,7 @@ add_library(pbkdf2 STATIC ${SOURCE_DIR}/pbkdf2/pbkdf2.c)
 add_library(serpent STATIC ${SOURCE_DIR}/vcserpent/SerpentFast.c)
 add_library(serpentsimd STATIC ${SOURCE_DIR}/vcserpent/SerpentFast_simd.cpp)
 
-add_executable(main ${SOURCE_DIR}/main.c)
+add_executable(main ${SOURCE_DIR}/main.c ${SOURCE_DIR}/core/crypto_mode_sloth.c ${SOURCE_DIR}/core/utils_sloth.c ${SOURCE_DIR}/core/logic_sloth.c)
 
 # 关键依赖
 target_link_libraries(pbkdf2 PUBLIC whirlpool)
