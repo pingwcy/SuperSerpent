@@ -392,16 +392,25 @@ int dec_file_sloth(int mode) {
 		uint8_t buffer[BLOCK_SIZE_SLOTH], decrypted_block[BLOCK_SIZE_SLOTH];
 		uint8_t prev_cipher[BLOCK_SIZE_SLOTH];
 		memcpy(prev_cipher, iv, BLOCK_SIZE_SLOTH);
-		size_t read_len;
 
-		while ((read_len = fread(buffer, 1, BLOCK_SIZE_SLOTH, infile)) > 0) {
+		uint8_t next_block[BLOCK_SIZE_SLOTH];
+		size_t next_len = fread(next_block, 1, BLOCK_SIZE_SLOTH, infile);
+
+		while (next_len > 0) {
+			memcpy(buffer, next_block, BLOCK_SIZE_SLOTH);
+			size_t curr_len = next_len;
+
+			next_len = fread(next_block, 1, BLOCK_SIZE_SLOTH, infile);
+
 			memcpy(decrypted_block, buffer, BLOCK_SIZE_SLOTH);
 			serpent_decrypt(decrypted_block, decrypted_block, ks);
 			for (size_t i = 0; i < BLOCK_SIZE_SLOTH; i++) {
 				decrypted_block[i] ^= prev_cipher[i];
 			}
 			memcpy(prev_cipher, buffer, BLOCK_SIZE_SLOTH);
-			if (feof(infile)) {
+
+			if (next_len == 0) {
+				// 这是最后一块，需要 unpad
 				size_t plain_len = pkcs7_unpad_sloth(decrypted_block, BLOCK_SIZE_SLOTH);
 				fwrite(decrypted_block, 1, plain_len, outfile);
 			}
