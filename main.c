@@ -57,7 +57,12 @@ int main() {
 				printf("Succerss decrypted\n");
 			}
 		}
-
+		else if (input[0] == 'a') {
+			hashstr_sloth();
+		}
+		else if (input[0] == 'b') {
+			hashfile_sloth();
+		}
 		else {
 			break;
 		}

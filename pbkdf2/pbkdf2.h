@@ -3,8 +3,13 @@
 
 #include <stdint.h>
 #include <stddef.h>
-
+#include "../params.h"
 #include "whirlpool/Whirlpool.h"  // WHIRLPOOL_* API
+typedef struct {
+    WHIRLPOOL_CTX inner;
+    WHIRLPOOL_CTX outer;
+    uint8_t o_key_pad[BLOCK_SIZE_WHIRLPOOL_SLOTH];
+} HMAC_Whirlpool_CTX;
 
 #ifdef __cplusplus
 extern "C" {
@@ -36,6 +41,10 @@ void PBKDF2_HMAC_Whirlpool(const uint8_t *password, int password_len,
                            const uint8_t *salt, int salt_len, 
                            int iterations, int key_len, 
                            uint8_t *output);
+
+void HMAC_Whirlpool_Init(HMAC_Whirlpool_CTX* ctx, const uint8_t* key, size_t key_len);
+void HMAC_Whirlpool_Update(HMAC_Whirlpool_CTX* ctx, const uint8_t* data, size_t len);
+void HMAC_Whirlpool_Final(HMAC_Whirlpool_CTX* ctx, uint8_t* output);
 
 #ifdef __cplusplus
 }

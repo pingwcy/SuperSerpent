@@ -3,19 +3,14 @@
 #include <string.h>
 #include <stdint.h>
 #include "pbkdf2.h"
-#include "../params.h"
 #include "whirlpool/Whirlpool.h"  // 假设 WHIRLPOOL_* API 定义在这个头文件中
 
-void HMAC_Whirlpool(const uint8_t* key, size_t key_len,
-	const uint8_t* message, size_t message_len,
-	uint8_t* output) {
-	uint8_t key_block[BLOCK_SIZE_WHIRLPOOL_SLOTH];  // 关键块
-	uint8_t o_key_pad[BLOCK_SIZE_WHIRLPOOL_SLOTH];  // 外部填充
-	uint8_t i_key_pad[BLOCK_SIZE_WHIRLPOOL_SLOTH];  // 内部填充
-	uint8_t inner_hash[OUTPUT_SIZE_SLOTH]; // 内部哈希结果
+void HMAC_Whirlpool_Init(HMAC_Whirlpool_CTX* ctx, const uint8_t* key, size_t key_len) {
+	uint8_t key_block[BLOCK_SIZE_WHIRLPOOL_SLOTH];
+	uint8_t i_key_pad[BLOCK_SIZE_WHIRLPOOL_SLOTH];
 	int i;
 
-	// 1. 处理密钥
+	// Step 1: 处理 key
 	if (key_len > BLOCK_SIZE_WHIRLPOOL_SLOTH) {
 		WHIRLPOOL_CTX key_ctx;
 		WHIRLPOOL_init(&key_ctx);
@@ -28,26 +23,47 @@ void HMAC_Whirlpool(const uint8_t* key, size_t key_len,
 		memset(key_block + key_len, 0, BLOCK_SIZE_WHIRLPOOL_SLOTH - key_len);
 	}
 
-	// 2. 生成 o_key_pad 和 i_key_pad
+	// Step 2: 创建 i_key_pad 和 o_key_pad
 	for (i = 0; i < BLOCK_SIZE_WHIRLPOOL_SLOTH; i++) {
-		o_key_pad[i] = key_block[i] ^ 0x5c;  // 外部填充
-		i_key_pad[i] = key_block[i] ^ 0x36;  // 内部填充
+		i_key_pad[i] = key_block[i] ^ 0x36;
+		ctx->o_key_pad[i] = key_block[i] ^ 0x5c;
 	}
 
-	// 3. 计算内部哈希：hash(i_key_pad + message)
-	WHIRLPOOL_CTX inner_ctx;
-	WHIRLPOOL_init(&inner_ctx);
-	WHIRLPOOL_add(i_key_pad, BLOCK_SIZE_WHIRLPOOL_SLOTH, &inner_ctx);
-	WHIRLPOOL_add(message, message_len, &inner_ctx);
-	WHIRLPOOL_finalize(&inner_ctx, inner_hash);
-
-	// 4. 计算外部哈希：hash(o_key_pad + inner_hash)
-	WHIRLPOOL_CTX outer_ctx;
-	WHIRLPOOL_init(&outer_ctx);
-	WHIRLPOOL_add(o_key_pad, BLOCK_SIZE_WHIRLPOOL_SLOTH, &outer_ctx);
-	WHIRLPOOL_add(inner_hash, OUTPUT_SIZE_SLOTH, &outer_ctx);
-	WHIRLPOOL_finalize(&outer_ctx, output);
+	// Step 3: 初始化内部哈希
+	WHIRLPOOL_init(&ctx->inner);
+	WHIRLPOOL_add(i_key_pad, BLOCK_SIZE_WHIRLPOOL_SLOTH, &ctx->inner);
 }
+
+void HMAC_Whirlpool_Update(HMAC_Whirlpool_CTX* ctx, const uint8_t* data, size_t len) {
+	WHIRLPOOL_add(data, len, &ctx->inner);
+}
+
+void HMAC_Whirlpool_Final(HMAC_Whirlpool_CTX* ctx, uint8_t* output) {
+	uint8_t inner_hash[OUTPUT_SIZE_SLOTH];
+
+	// Step 1: 完成内部哈希
+	WHIRLPOOL_finalize(&ctx->inner, inner_hash);
+
+	// Step 2: 初始化外部哈希
+	WHIRLPOOL_init(&ctx->outer);
+	WHIRLPOOL_add(ctx->o_key_pad, BLOCK_SIZE_WHIRLPOOL_SLOTH, &ctx->outer);
+	WHIRLPOOL_add(inner_hash, OUTPUT_SIZE_SLOTH, &ctx->outer);
+	WHIRLPOOL_finalize(&ctx->outer, output);
+}
+
+// 包装器：一步式 HMAC（调用三段式）
+void HMAC_Whirlpool(
+	const uint8_t* key, size_t key_len,
+	const uint8_t* message, size_t message_len,
+	uint8_t* output)
+{
+	HMAC_Whirlpool_CTX ctx;
+
+	HMAC_Whirlpool_Init(&ctx, key, key_len);
+	HMAC_Whirlpool_Update(&ctx, message, message_len);
+	HMAC_Whirlpool_Final(&ctx, output);
+}
+
 
 
 void PBKDF2_HMAC_Whirlpool(const uint8_t* password, int password_len,
