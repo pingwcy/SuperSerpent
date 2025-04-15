@@ -7,12 +7,6 @@
 #include "../rand/rand.h"
 #include "../core/crypto_mode_sloth.h"
 
-//Wrapper of the Serpent encrypt for GCM mode
-static void encrypt_block(const uint8_t* input, uint8_t* output, const uint8_t* key) {
-	uint8_t ks[SERPENT_KSSIZE_SLOTH];  // Serpent 可能使用较大的密钥调度表
-	serpent_set_key(key, ks);  // 初始化密钥调度表
-	serpent_encrypt(input, output, ks);  // 用密钥调度表加密
-}
 
 // GF(2^128) 乘法（Galois 字段乘法）,for GCM MODE
 static void galois_mult(const uint8_t* X, const uint8_t* Y, uint8_t* result) {
@@ -57,6 +51,9 @@ static void ghash(const uint8_t* H, const uint8_t* data, size_t length, uint8_t*
 
 // 修正 GCM 加密函数
 void gcm_encrypt_sloth(const uint8_t* data, size_t length, const uint8_t* key, uint8_t* iv, uint8_t* tag, uint8_t* encrypted_data) {
+	uint8_t ks[SERPENT_KSSIZE_SLOTH];  // Serpent 可能使用较大的密钥调度表
+	serpent_set_key(key, ks);  // 初始化密钥调度表
+
 	uint8_t counter[16] = { 0 };  // 计数器，初始化为 0
 	uint8_t keystream[16];
 	uint8_t H[16] = { 0 };  // H = E(K, 0)
@@ -66,12 +63,10 @@ void gcm_encrypt_sloth(const uint8_t* data, size_t length, const uint8_t* key, u
 	counter[15] = 1;  // GCM 规范要求从 1 开始
 
 	// 计算 H
-	encrypt_block(H, H, key);
-
+	serpent_encrypt(H, H, ks);
 	// 加密数据
 	for (size_t i = 0; i < length; i += 16) {
-		encrypt_block(counter, keystream, key);
-
+		serpent_encrypt(counter, keystream, ks);
 		for (size_t j = 0; j < 16 && (i + j) < length; j++) {
 			encrypted_data[i + j] = data[i + j] ^ keystream[j];
 		}
@@ -84,11 +79,14 @@ void gcm_encrypt_sloth(const uint8_t* data, size_t length, const uint8_t* key, u
 
 	// 计算 GHASH 认证标签
 	ghash(H, encrypted_data, length, tag);
-	encrypt_block(tag, tag, key);
+	serpent_encrypt(tag, tag, ks);
 }
 
 // 修正 GCM 解密函数
 int gcm_decrypt_sloth(uint8_t* data, size_t length, const uint8_t* key, uint8_t* iv, uint8_t* tag) {
+	uint8_t ks[SERPENT_KSSIZE_SLOTH];  // Serpent 可能使用较大的密钥调度表
+	serpent_set_key(key, ks);  // 初始化密钥调度表
+
 	uint8_t counter[16] = { 0 };
 	uint8_t keystream[16];
 	uint8_t H[16] = { 0 };
@@ -97,17 +95,16 @@ int gcm_decrypt_sloth(uint8_t* data, size_t length, const uint8_t* key, uint8_t*
 	memcpy(counter, iv, NONCE_SIZE_SLOTH);
 	counter[15] = 1;
 
-	encrypt_block(H, H, key);
+	serpent_encrypt(H, H, ks);
 	ghash(H, data, length, computed_tag);
-	encrypt_block(computed_tag, computed_tag, key);
+	serpent_encrypt(computed_tag, computed_tag, ks);
 
 	if (memcmp(computed_tag, tag, TAG_SIZE_SLOTH) != 0) {
 		return -1;  // 认证失败
 	}
 
 	for (size_t i = 0; i < length; i += 16) {
-		encrypt_block(counter, keystream, key);
-
+		serpent_encrypt(counter, keystream, ks);
 		for (size_t j = 0; j < 16 && (i + j) < length; j++) {
 			data[i + j] ^= keystream[j];
 		}

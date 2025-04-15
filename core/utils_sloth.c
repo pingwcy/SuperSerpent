@@ -56,10 +56,14 @@ size_t pkcs7_pad_sloth(unsigned char* input, size_t len, unsigned char* output) 
 size_t pkcs7_unpad_sloth(unsigned char* data, size_t len) {
 	if (len == 0) return 0;
 	uint8_t pad_len = data[len - 1];
-	if (pad_len > BLOCK_SIZE_SLOTH || pad_len == 0) return len; 
+	if (pad_len == 0 || pad_len > BLOCK_SIZE_SLOTH || pad_len > len) {
+		return len;
+	} 
+	uint8_t bad = 0;
 	for (size_t i = 0; i < pad_len; i++) {
-		if (data[len - 1 - i] != pad_len) return len; 
+		bad |= data[len - 1 - i] ^ pad_len; 
 	}
+	if (bad != 0) return len;
 	return len - pad_len;
 }
 

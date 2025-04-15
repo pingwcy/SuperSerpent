@@ -377,10 +377,13 @@ int enc_file_sloth(int mode) {
 		uint8_t* buffer = (uint8_t*)malloc(GCM_BLOCK_SIZE_SLOTH);
 		uint8_t* cipher = (uint8_t*)malloc(GCM_BLOCK_SIZE_SLOTH);
 
-		if (!buffer)  
-		{
+		if (!buffer || !cipher) {
 			handle_error_sloth("Memory allocation failed");
-			free(buffer);
+			if (buffer) free(buffer);
+			if (cipher) free(cipher);
+			fclose(outfile);
+			fclose(infile);
+			return 1;
 		}
 
 		fwrite(salt, 1, sizeof(salt), outfile);

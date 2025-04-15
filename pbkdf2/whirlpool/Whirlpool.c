@@ -68,6 +68,7 @@
  *
  */
 
+#include "Tcdefs.h"
 #include "Endian.h"
 #if !defined(_UEFI)
 #include <memory.h>
