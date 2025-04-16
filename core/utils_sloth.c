@@ -5,6 +5,12 @@
 #include <stdint.h>
 #include "../params.h"
 
+void strtolower(const char* src, char* dest) {
+	for (; *src; ++src, ++dest)
+		*dest = tolower(*src);
+	*dest = '\0';
+}
+
 int get_user_input(const char* label, char* buffer, size_t buffer_size) {
 	printf("%s", label);
 	fflush(stdout);  
@@ -36,7 +42,7 @@ int safe_fgets_sloth(char* buffer, size_t buffer_size) {
 	return 1; 
 }
 void print_hex_sloth(const char* label, const uint8_t* data, size_t length) {
-	if (!label || !data) return; 
+	if (!label || !data || VERBOSE_SLOTH == 0) return;
 	printf("%s: ", label);
 	for (size_t i = 0; i < length; i++) {
 		printf("%02X", data[i]); 

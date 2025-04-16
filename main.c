@@ -3,12 +3,22 @@
 #include <string.h>
 #include "params.h"
 #include "core/logic_sloth.h"
-
+#include "core/utils_sloth.h"
 //#define _CRTDBG_MAP_ALLOC
 //#include <crtdbg.h>
+int VERBOSE_SLOTH = 0;
 
-int main() {
+int main(int argc, char* argv[]) {
 	//_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF); // 启用内存泄漏检测
+	for (int i = 1; i < argc; i++) {
+		char lowerArg[256];
+		strtolower(argv[i], lowerArg);
+
+		if (strcmp(lowerArg, "-verbose") == 0) {
+			VERBOSE_SLOTH = 1;
+			printf("Verbose mode enabled\n");
+		}
+	}
 
 	do {
 		printf("SuperSerpent, PBKDF2 with Whirlpool, Iter %d, salt %d, iv %d, nonce %d, tag %d\n", ITERATIONS_SLOTH, SALT_SIZE_SLOTH, IV_SIZE_SLOTH, NONCE_SIZE_SLOTH, TAG_SIZE_SLOTH);

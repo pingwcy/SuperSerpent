@@ -3,6 +3,9 @@
 
 #include <stdint.h>
 #include <stddef.h>
+extern int VERBOSE_SLOTH;
+
+void strtolower(const char* src, char* dest);
 int get_user_input(const char* label, char* buffer, size_t buffer_size);
 void handle_error_sloth(const char* msg);
 void clear_input_buffer_sloth();
