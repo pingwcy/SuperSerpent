@@ -92,8 +92,7 @@ static void ghash(const uint8_t* H, const uint8_t* data, size_t length, uint8_t*
 
 
 // GCM 加密
-void gcm_encrypt_sloth(const uint8_t* data, size_t length, const uint8_t* key, const uint8_t* iv,
-	uint8_t* tag, uint8_t* encrypted_data) {
+void gcm_encrypt_sloth(const uint8_t* data, size_t length, const uint8_t* key, const uint8_t* iv, uint8_t* tag, uint8_t* encrypted_data) {
 	if (!data || !key || !iv || !tag || !encrypted_data) return;
 
 	uint8_t ks[SERPENT_KSSIZE_SLOTH];
