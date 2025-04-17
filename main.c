@@ -23,48 +23,50 @@ int main(int argc, char* argv[]) {
 	do {
 		printf("SuperSerpent, PBKDF2 with Whirlpool, Iter %d, salt %d, iv %d, nonce %d, tag %d\n", ITERATIONS_SLOTH, SALT_SIZE_SLOTH, IV_SIZE_SLOTH, NONCE_SIZE_SLOTH, TAG_SIZE_SLOTH);
 		fflush(stdout);
-		printf("Select function: \n1.CBC Encryption    2.CBC Decryption   3.CBC Encrypt File    4.CBC Decrypt File\n5.GCM Encryption    6.GCM Decryption   7.GCM Encrypt File    8.GCM Decrypt File\nMake selection: ");
+		printf("Select function: \n1.CBC Encryption    2.CBC Decryption    3.CBC Encrypt File    4.CBC Decrypt File\n5.GCM Encryption    6.GCM Decryption    7.GCM Encrypt File    8.GCM Decrypt File\n");
 		fflush(stdout);
 		char input[10];  // 用于存储用户输入
-		fgets(input, sizeof(input), stdin);
+		if (get_user_input("Make selection: ", input, sizeof(input)) != 0) {
+			continue;
+		}
 		if (input[0] == '1') {
 			if (enc_sloth(0) == 0) {
-				printf("Succerss encrypted\n");
+				printf("Success encrypted\n");
 			}
 		}
 		else if (input[0] == '2') {
 			if (dec_sloth(0) == 0) {
-				printf("Succerss decrypted\n");
+				printf("Success decrypted\n");
 			}
 		}
 		else if (input[0] == '3') {
 			if (enc_file_sloth(0) == 0) {
-				printf("Succerss encrypted\n");
+				printf("Success encrypted\n");
 			}
 		}
 		else if (input[0] == '4') {
 			if (dec_file_sloth(0) == 0) {
-				printf("Succerss decrypted\n");
+				printf("Success decrypted\n");
 			}
 		}
 		else if (input[0] == '5') {
 			if (enc_sloth(1) == 0) {
-				printf("Succerss encrypted\n");
+				printf("Success encrypted\n");
 			}
 		}
 		else if (input[0] == '6') {
 			if (dec_sloth(1) == 0) {
-				printf("Succerss decrypted\n");
+				printf("Success decrypted\n");
 			}
 		}
 		else if (input[0] == '7') {
 			if (enc_file_sloth(1) == 0) {
-				printf("Succerss encrypted\n");
+				printf("Success encrypted\n");
 			}
 		}
 		else if (input[0] == '8') {
 			if (dec_file_sloth(1) == 0) {
-				printf("Succerss decrypted\n");
+				printf("Success decrypted\n");
 			}
 		}
 		else if (input[0] == 'a') {

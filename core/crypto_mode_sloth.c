@@ -6,10 +6,13 @@
 #include "../pbkdf2/pbkdf2.h"
 #include "../rand/rand.h"
 #include "../core/crypto_mode_sloth.h"
-
+#include "../core/utils_sloth.h"
 
 // GF(2^128) 乘法（Galois 字段乘法）,for GCM MODE
 static void galois_mult(const uint8_t* X, const uint8_t* Y, uint8_t* result) {
+	// Defensive: Clear result buffer to avoid any reuse of old data.
+	memset(result, 0, 16);
+
 	uint8_t Z[16] = { 0 };
 	uint8_t V[16];
 	memcpy(V, Y, 16);
@@ -60,6 +63,9 @@ void gcm_encrypt_sloth(const uint8_t* data, size_t length, const uint8_t* key, u
 
 	// 确保 nonce 仅 12 字节，并正确设置计数器
 	memcpy(counter, iv, 12);  // 只复制 12 字节
+	counter[12] = 0;
+	counter[13] = 0;
+	counter[14] = 0;
 	counter[15] = 1;  // GCM 规范要求从 1 开始
 
 	// 计算 H
@@ -99,8 +105,8 @@ int gcm_decrypt_sloth(uint8_t* data, size_t length, const uint8_t* key, uint8_t*
 	ghash(H, data, length, computed_tag);
 	serpent_encrypt(computed_tag, computed_tag, ks);
 
-	if (memcmp(computed_tag, tag, TAG_SIZE_SLOTH) != 0) {
-		return -1;  // 认证失败
+	if (!constant_time_compare_sloth(computed_tag, tag, TAG_SIZE_SLOTH)) {
+		return -1;
 	}
 
 	for (size_t i = 0; i < length; i += 16) {

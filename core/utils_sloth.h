@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 extern int VERBOSE_SLOTH;
-
+int constant_time_compare_sloth(const uint8_t* a, const uint8_t* b, size_t len);
 void strtolower(const char* src, char* dest);
 int get_user_input(const char* label, char* buffer, size_t buffer_size);
 void handle_error_sloth(const char* msg);
