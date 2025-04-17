@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <errno.h>
+#include <ctype.h>
 #include "../params.h"
 
 int constant_time_compare_sloth(const uint8_t* a, const uint8_t* b, size_t len) {
