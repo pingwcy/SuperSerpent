@@ -6,6 +6,51 @@
 #include <errno.h>
 #include <ctype.h>
 #include "../params.h"
+#if defined(_WIN32)
+#include <windows.h>
+#endif
+
+// Constant-time XOR
+void ct_xor_sloth(uint8_t* out, const uint8_t* in, uint8_t val, size_t len) {
+	for (size_t i = 0; i < len; ++i) {
+		out[i] = in[i] ^ val;
+	}
+}
+
+// Constant-time copy
+void ct_memcpy_sloth(uint8_t* dst, const uint8_t* src, size_t len) {
+	volatile uint8_t dummy = 0;
+	for (size_t i = 0; i < len; ++i) {
+		dst[i] = src[i];
+		dummy |= dst[i]; // 防止优化
+	}
+	(void)dummy;
+}
+
+void secure_memzero_sloth(void* ptr, size_t len) {
+if (ptr == NULL || len == 0) return;
+
+#if defined(_WIN32)
+	SecureZeroMemory(ptr, len); // Windows 专用
+#else
+	// 优先尝试平台是否显式提供 memset_s
+#if defined(__STDC_LIB_EXT1__) && (__STDC_WANT_LIB_EXT1__ == 1)
+	if (memset_s(ptr, len, 0, len) == 0) {
+		return;
+	}
+#endif
+
+	// fallback：手动写入 + memory barrier 防止编译器优化
+	volatile unsigned char* p = (volatile unsigned char*)ptr;
+	while (len--) {
+		*p++ = 0;
+	}
+
+	// 防止编译器优化整个调用
+	__asm__ __volatile__("" : : "r"(ptr) : "memory");
+#endif
+}
+
 
 int constant_time_compare_sloth(const uint8_t* a, const uint8_t* b, size_t len) {
 	uint8_t result = 0;
@@ -161,8 +206,15 @@ size_t pkcs7_unpad_sloth(unsigned char* data, size_t len) {
 }
 
 void hex_to_uint8_sloth(const char* hex, uint8_t* output, size_t len) {
+	if (strlen(hex) < len * 2) {
+		handle_error_sloth("Hex input too short");
+		return;
+	}
+
+	unsigned int byte;
 	for (size_t i = 0; i < len; i++) {
-		sscanf(hex + 2 * i, "%2hhx", &output[i]);
+		sscanf(hex + 2 * i, "%2x", &byte);
+		output[i] = (uint8_t)byte;
 	}
 }
 
@@ -171,7 +223,7 @@ char* uint8_to_hex_string_sloth(uint8_t* data, size_t len) {
 	if (!hex_string) return NULL;
 
 	for (size_t i = 0; i < len; i++) {
-		snprintf(hex_string + i * 2, 3, "%02X", data[i]);
+		snprintf(hex_string + i * 2, 3, "%02x", data[i]);
 	}
 	return hex_string;
 }

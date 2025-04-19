@@ -7,7 +7,7 @@
 #include "../rand/rand.h"
 #include "../core/crypto_mode_sloth.h"
 #include "../core/utils_sloth.h"
-
+#include "utils_sloth.h"
 static void increment_counter(uint8_t counter[16]) {
 	for (int i = 15; i >= 12; i--) {
 		if (++counter[i] != 0) {
@@ -88,6 +88,11 @@ static void ghash(const uint8_t* H, const uint8_t* data, size_t length, uint8_t*
 	}
 	galois_mult(Y, H, temp);
 	memcpy(tag, temp, BLOCK_SIZE_SLOTH);
+
+	secure_memzero_sloth(temp, BLOCK_SIZE_SLOTH);
+	secure_memzero_sloth(block, BLOCK_SIZE_SLOTH);
+	secure_memzero_sloth(len_block, BLOCK_SIZE_SLOTH);
+	secure_memzero_sloth(Y, BLOCK_SIZE_SLOTH);
 }
 
 
@@ -127,6 +132,10 @@ void gcm_encrypt_sloth(const uint8_t* data, size_t length, const uint8_t* key, c
 	for (int i = 0; i < BLOCK_SIZE_SLOTH; i++) {
 		tag[i] = keystream[i] ^ S[i];
 	}
+	secure_memzero_sloth(keystream, BLOCK_SIZE_SLOTH);
+	secure_memzero_sloth(H, BLOCK_SIZE_SLOTH);
+	secure_memzero_sloth(counter, BLOCK_SIZE_SLOTH);
+
 }
 
 // GCM 解密
@@ -167,5 +176,9 @@ int gcm_decrypt_sloth(uint8_t* data, size_t length, const uint8_t* key, const ui
 			data[i + j] ^= keystream[j];
 		}
 	}
+	secure_memzero_sloth(keystream, BLOCK_SIZE_SLOTH);
+	secure_memzero_sloth(H, BLOCK_SIZE_SLOTH);
+	secure_memzero_sloth(counter, BLOCK_SIZE_SLOTH);
+
 	return 0;
 }

@@ -14,7 +14,7 @@ extern "C" {
  * @param len 需要生成的随机字节数
  * @return int 成功返回 0，失败返回 -1
  */
-int get_random_bytes(void *buf, size_t len);
+//int get_random_bytes(void *buf, size_t len);
 
 int secure_random(void *buf, size_t len);
 #ifdef __cplusplus

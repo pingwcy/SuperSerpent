@@ -4,6 +4,9 @@
 #include <stdint.h>
 #include <stddef.h>
 extern int VERBOSE_SLOTH;
+void ct_xor_sloth(uint8_t* out, const uint8_t* in, uint8_t val, size_t len);
+void ct_memcpy_sloth(uint8_t* dst, const uint8_t* src, size_t len);
+void secure_memzero_sloth(void* ptr, size_t len);
 int constant_time_compare_sloth(const uint8_t* a, const uint8_t* b, size_t len);
 void strtolower(const char* src, char* dest);
 int get_user_input(const char* label, char* buffer, size_t buffer_size);

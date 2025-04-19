@@ -3,35 +3,46 @@
 #include <string.h>
 #include <stdint.h>
 #include "pbkdf2.h"
+#include "../core/utils_sloth.h"
 #include "whirlpool/Whirlpool.h"  // 假设 WHIRLPOOL_* API 定义在这个头文件中
 
 void HMAC_Whirlpool_Init(HMAC_Whirlpool_CTX* ctx, const uint8_t* key, size_t key_len) {
 	uint8_t key_block[BLOCK_SIZE_WHIRLPOOL_SLOTH];
 	uint8_t i_key_pad[BLOCK_SIZE_WHIRLPOOL_SLOTH];
-	int i;
+	uint8_t hashed_key[OUTPUT_SIZE_SLOTH];
 
-	// Step 1: 处理 key
+	// Step 1: Hash long key
 	if (key_len > BLOCK_SIZE_WHIRLPOOL_SLOTH) {
 		WHIRLPOOL_CTX key_ctx;
 		WHIRLPOOL_init(&key_ctx);
 		WHIRLPOOL_add(key, key_len, &key_ctx);
-		WHIRLPOOL_finalize(&key_ctx, key_block);
-		memset(key_block + OUTPUT_SIZE_SLOTH, 0, BLOCK_SIZE_WHIRLPOOL_SLOTH - OUTPUT_SIZE_SLOTH);
+		WHIRLPOOL_finalize(&key_ctx, hashed_key);
+		ct_memcpy_sloth(key_block, hashed_key, OUTPUT_SIZE_SLOTH);
+		if (OUTPUT_SIZE_SLOTH < BLOCK_SIZE_WHIRLPOOL_SLOTH) {
+			memset(key_block + OUTPUT_SIZE_SLOTH, 0, BLOCK_SIZE_WHIRLPOOL_SLOTH - OUTPUT_SIZE_SLOTH);
+		}
+		secure_memzero_sloth(&key_ctx, sizeof(key_ctx));
+		secure_memzero_sloth(hashed_key, sizeof(hashed_key));
 	}
 	else {
-		memcpy(key_block, key, key_len);
-		memset(key_block + key_len, 0, BLOCK_SIZE_WHIRLPOOL_SLOTH - key_len);
+		ct_memcpy_sloth(key_block, key, key_len);
+		if (key_len < BLOCK_SIZE_WHIRLPOOL_SLOTH) {
+			memset(key_block + key_len, 0, BLOCK_SIZE_WHIRLPOOL_SLOTH - key_len);
+		}
 	}
 
-	// Step 2: 创建 i_key_pad 和 o_key_pad
-	for (i = 0; i < BLOCK_SIZE_WHIRLPOOL_SLOTH; i++) {
-		i_key_pad[i] = key_block[i] ^ 0x36;
-		ctx->o_key_pad[i] = key_block[i] ^ 0x5c;
-	}
+	// Step 2: Create inner and outer pads
+	ct_xor_sloth(i_key_pad, key_block, 0x36, BLOCK_SIZE_WHIRLPOOL_SLOTH);
+	ct_xor_sloth(ctx->o_key_pad, key_block, 0x5c, BLOCK_SIZE_WHIRLPOOL_SLOTH);
 
-	// Step 3: 初始化内部哈希
+	// Step 3: Start inner hash
 	WHIRLPOOL_init(&ctx->inner);
 	WHIRLPOOL_add(i_key_pad, BLOCK_SIZE_WHIRLPOOL_SLOTH, &ctx->inner);
+
+	// 清除中间敏感数据
+	secure_memzero_sloth(i_key_pad, sizeof(i_key_pad));
+	secure_memzero_sloth(key_block, sizeof(key_block));
+
 }
 
 void HMAC_Whirlpool_Update(HMAC_Whirlpool_CTX* ctx, const uint8_t* data, size_t len) {
@@ -41,14 +52,20 @@ void HMAC_Whirlpool_Update(HMAC_Whirlpool_CTX* ctx, const uint8_t* data, size_t 
 void HMAC_Whirlpool_Final(HMAC_Whirlpool_CTX* ctx, uint8_t* output) {
 	uint8_t inner_hash[OUTPUT_SIZE_SLOTH];
 
-	// Step 1: 完成内部哈希
+	// 完成内部哈希
 	WHIRLPOOL_finalize(&ctx->inner, inner_hash);
 
-	// Step 2: 初始化外部哈希
-	WHIRLPOOL_init(&ctx->outer);
-	WHIRLPOOL_add(ctx->o_key_pad, BLOCK_SIZE_WHIRLPOOL_SLOTH, &ctx->outer);
-	WHIRLPOOL_add(inner_hash, OUTPUT_SIZE_SLOTH, &ctx->outer);
-	WHIRLPOOL_finalize(&ctx->outer, output);
+	// 外部哈希使用局部变量，避免污染 ctx
+	WHIRLPOOL_CTX outer;
+	WHIRLPOOL_init(&outer);
+	WHIRLPOOL_add(ctx->o_key_pad, BLOCK_SIZE_WHIRLPOOL_SLOTH, &outer);
+	WHIRLPOOL_add(inner_hash, OUTPUT_SIZE_SLOTH, &outer);
+	WHIRLPOOL_finalize(&outer, output);
+
+	// 清除敏感中间值
+	secure_memzero_sloth(inner_hash, sizeof(inner_hash));
+	secure_memzero_sloth(&outer, sizeof(outer));
+
 }
 
 // 包装器：一步式 HMAC（调用三段式）
@@ -62,6 +79,7 @@ void HMAC_Whirlpool(
 	HMAC_Whirlpool_Init(&ctx, key, key_len);
 	HMAC_Whirlpool_Update(&ctx, message, message_len);
 	HMAC_Whirlpool_Final(&ctx, output);
+	secure_memzero_sloth(&ctx, sizeof(ctx));
 }
 
 
@@ -70,45 +88,51 @@ void PBKDF2_HMAC_Whirlpool(const uint8_t* password, int password_len,
 	const uint8_t* salt, int salt_len,
 	int iterations, int key_len,
 	uint8_t* output) {
-	int hash_len = OUTPUT_SIZE_SLOTH;
-	int block_count = (key_len + hash_len - 1) / hash_len; // 计算需要多少块
-	uint8_t U[OUTPUT_SIZE_SLOTH], T[OUTPUT_SIZE_SLOTH];
+	if (iterations == 0 || key_len == 0 || output == NULL) return;
 
-	for (int i = 1; i <= block_count; i++) {
-		// 动态分配 salt_block，避免固定大小问题
+	size_t hash_len = OUTPUT_SIZE_SLOTH;
+	size_t block_count = (key_len + hash_len - 1) / hash_len;
+	uint8_t U[OUTPUT_SIZE_SLOTH];
+	uint8_t T[OUTPUT_SIZE_SLOTH];
+
+	for (uint32_t i = 1; i <= block_count; i++) {
+		uint8_t int_block[4];
+		int_block[0] = (i >> 24) & 0xFF;
+		int_block[1] = (i >> 16) & 0xFF;
+		int_block[2] = (i >> 8) & 0xFF;
+		int_block[3] = i & 0xFF;
+
+		// 构造 salt || INT(i)
 		uint8_t* salt_block = (uint8_t*)malloc(salt_len + 4);
 		if (!salt_block) {
 			fprintf(stderr, "Memory allocation failed\n");
+			// 清零输出以避免使用未完整填充的 key
+			secure_memzero_sloth(output, key_len);
 			return;
 		}
+		ct_memcpy_sloth(salt_block, salt, salt_len);
+		ct_memcpy_sloth(salt_block + salt_len, int_block, 4);
 
-		memcpy(salt_block, salt, salt_len);
-		salt_block[salt_len] = (i >> 24) & 0xFF;
-		salt_block[salt_len + 1] = (i >> 16) & 0xFF;
-		salt_block[salt_len + 2] = (i >> 8) & 0xFF;
-		salt_block[salt_len + 3] = i & 0xFF;
-
-		// 计算 U1 = HMAC(password, salt || i)
+		// U_1 = PRF(password, salt || i)
 		HMAC_Whirlpool(password, password_len, salt_block, salt_len + 4, U);
-		memcpy(T, U, hash_len);
+		ct_memcpy_sloth(T, U, hash_len);
+		free(salt_block);
 
-		free(salt_block);  // 释放 salt_block
-
-		// 进行 iterations-1 次迭代
-		for (int j = 1; j < iterations; j++) {
+		// 后续 U_j
+		for (uint32_t j = 1; j < iterations; j++) {
 			HMAC_Whirlpool(password, password_len, U, hash_len, U);
-			for (int k = 0; k < hash_len; k++) {
-				T[k] ^= U[k]; // T = T ⊕ Uj
+			for (size_t k = 0; k < hash_len; k++) {
+				T[k] ^= U[k];
 			}
 		}
 
-		// 复制 T 到输出
-		int offset = (i - 1) * hash_len;
-		int copy_len = (key_len - offset > hash_len) ? hash_len : (key_len - offset);
-		memcpy(output + offset, T, copy_len);
-		memset(U, 0, sizeof(U));
-		memset(T, 0, sizeof(T));
+		// 输出 block
+		size_t offset = (i - 1) * hash_len;
+		size_t copy_len = (key_len - offset > hash_len) ? hash_len : (key_len - offset);
+		ct_memcpy_sloth(output + offset, T, copy_len);
 
+		secure_memzero_sloth(U, sizeof(U));
+		secure_memzero_sloth(T, sizeof(T));
 	}
 }
 

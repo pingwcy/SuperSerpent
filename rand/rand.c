@@ -15,6 +15,10 @@
 #include <sys/time.h>
 #endif
 
+#include "../params.h"
+#include "../core/utils_sloth.h"
+#include "rand.h"
+#include "../pbkdf2/pbkdf2.h"
 #ifdef __x86_64__
 #include <x86intrin.h>
 #elif defined(__aarch64__) || defined(__arm__)
@@ -22,7 +26,7 @@
 #endif
 
 // 获取随机字节（主要熵源）
-int get_random_bytes(void *buf, size_t len) {
+static int get_random_bytes(void *buf, size_t len) {
 #ifdef _WIN32
     HCRYPTPROV hProvider = 0;
     if (!CryptAcquireContext(&hProvider, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) {
@@ -42,7 +46,46 @@ int get_random_bytes(void *buf, size_t len) {
 #endif
     return 0;
 }
+int secure_random(void* buf, size_t len) {
+    if (len == 0) return 0;
 
+    unsigned char entropy_pool[ENTROPY_POOL_SIZE_SLOTH];
+    unsigned char hmac_key[HMAC_WHIRLPOOL_KEY_SIZE_SLOTH];
+
+    // 收集系统熵：HMAC key + 输入缓冲区
+    if (get_random_bytes(hmac_key, HMAC_WHIRLPOOL_KEY_SIZE_SLOTH) != 0) return -1;
+    if (get_random_bytes(entropy_pool, ENTROPY_POOL_SIZE_SLOTH) != 0) return -1;
+
+    size_t generated = 0;
+    uint64_t counter = 0;
+    unsigned char round_input[ENTROPY_POOL_SIZE_SLOTH + sizeof(counter)];
+    unsigned char round_output[OUTPUT_SIZE_SLOTH];
+
+    while (generated < len) {
+        // 构造输入：entropy_pool || counter
+        memcpy(round_input, entropy_pool, ENTROPY_POOL_SIZE_SLOTH);
+        memcpy(round_input + ENTROPY_POOL_SIZE_SLOTH, &counter, sizeof(counter));
+
+        HMAC_Whirlpool(hmac_key, HMAC_WHIRLPOOL_KEY_SIZE_SLOTH, round_input,
+            sizeof(round_input), round_output);
+
+        size_t to_copy = (len - generated < OUTPUT_SIZE_SLOTH) ? (len - generated) : OUTPUT_SIZE_SLOTH;
+        memcpy((unsigned char*)buf + generated, round_output, to_copy);
+
+        generated += to_copy;
+        counter++;
+    }
+
+    // 安全清除敏感数据
+    secure_memzero_sloth(entropy_pool, sizeof(entropy_pool));
+    secure_memzero_sloth(hmac_key, sizeof(hmac_key));
+    secure_memzero_sloth(round_input, sizeof(round_input));
+    secure_memzero_sloth(round_output, sizeof(round_output));
+
+    return 0;
+}
+
+/*
 // 增加时间熵
 static void mix_time_entropy(unsigned char *buf, size_t len) {
     uint64_t t = 0;
@@ -108,14 +151,9 @@ static void enhance_entropy(unsigned char *buf, size_t len) {
     mix_cpu_entropy(buf, len);
     mix_pid_entropy(buf, len);
 }
+*/
 
-int secure_random(void *buf, size_t len) {
-    if (get_random_bytes(buf, len) != 0) {
-        return -1;
-    }
-    enhance_entropy(buf, len);
-    return 0;
-}
+
 
 /*
 int main() {

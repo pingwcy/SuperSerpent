@@ -3,13 +3,19 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <assert.h>
+#define STATIC_ASSERT_SLOTH(cond, msg) typedef char static_assertion_##msg[(cond) ? 1 : -1]
+
 #include "../params.h"
 #include "whirlpool/Whirlpool.h"  // WHIRLPOOL_* API
 typedef struct {
     WHIRLPOOL_CTX inner;
     WHIRLPOOL_CTX outer;
     uint8_t o_key_pad[BLOCK_SIZE_WHIRLPOOL_SLOTH];
-} HMAC_Whirlpool_CTX;
+} HMAC_Whirlpool_CTX ;
+
+STATIC_ASSERT_SLOTH(sizeof(HMAC_Whirlpool_CTX) ==
+    sizeof(WHIRLPOOL_CTX) * 2 + BLOCK_SIZE_WHIRLPOOL_SLOTH, ctx_size_mismatch);
 
 #ifdef __cplusplus
 extern "C" {
