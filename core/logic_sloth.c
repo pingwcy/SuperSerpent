@@ -20,29 +20,27 @@ int enc_sloth(int mode) {
 		return 1;
 	}
 	if (get_user_input("Please enter plaintext: ", plaintext, sizeof(plaintext)) != 0) {
+		secure_memzero_sloth(password, sizeof(password));
 		return 1;
 	}
 	plaintext_len = strlen(plaintext);
 
 	//printf("Password: %s\n", password);
 	if (secure_random(salt, sizeof(salt)) != 0) {
+		secure_memzero_sloth(password, sizeof(password));
 		fprintf(stderr, "Failed to generate salt.\n");
 		return 1;
 	}
-	print_hex_sloth("Salt",salt,sizeof(salt));
+	print_hex_sloth("Salt", salt, sizeof(salt));
 
 	if (mode == 0) {
 		uint8_t master_key[KEY_SIZE_SLOTH + HMAC_WHIRLPOOL_KEY_SIZE_SLOTH], hmac_key[HMAC_WHIRLPOOL_KEY_SIZE_SLOTH], iv[IV_SIZE_SLOTH], ks[SERPENT_KSSIZE_SLOTH], hmac_output[64];
 		unsigned char padded_text[PADDEDTEXT_MAX_LENGTH_SLOTH];
 		size_t padded_len;
 
-		PBKDF2_HMAC_Whirlpool((uint8_t*)password, strlen(password), salt, sizeof(salt), ITERATIONS_SLOTH, sizeof(master_key), master_key);
-		memcpy(derived_key, master_key, KEY_SIZE_SLOTH);
-		memcpy(hmac_key, master_key + KEY_SIZE_SLOTH, HMAC_WHIRLPOOL_KEY_SIZE_SLOTH);
-		print_hex_sloth("derived_key", derived_key, sizeof(derived_key));
-		print_hex_sloth("hmac_key", hmac_key, sizeof(hmac_key));
 
 		if (secure_random(iv, sizeof(iv)) != 0) {
+			secure_memzero_sloth(password, sizeof(password));
 			fprintf(stderr, "Failed to generate IV.\n");
 			return 1;
 		}
@@ -51,20 +49,29 @@ int enc_sloth(int mode) {
 		padded_len = pkcs7_pad_sloth((unsigned char*)plaintext, plaintext_len, padded_text);
 
 		if (!padded_len) {
+			secure_memzero_sloth(password, sizeof(password));
 			fprintf(stderr, "Padding error.\n");
 			return 1;
 		}
 		print_hex_sloth("Padded text", padded_text, padded_len);
+
+		PBKDF2_HMAC_Whirlpool((uint8_t*)password, strlen(password), salt, sizeof(salt), ITERATIONS_SLOTH, sizeof(master_key), master_key);
+		memcpy(derived_key, master_key, KEY_SIZE_SLOTH);
+		memcpy(hmac_key, master_key + KEY_SIZE_SLOTH, HMAC_WHIRLPOOL_KEY_SIZE_SLOTH);
+		print_hex_sloth("derived_key", derived_key, sizeof(derived_key));
+		print_hex_sloth("hmac_key", hmac_key, sizeof(hmac_key));
 
 		serpent_set_key(derived_key, ks);
 
 		unsigned char* ciphertext = (unsigned char*)malloc(padded_len);
 		if (!ciphertext) {
 			secure_memzero_sloth(master_key, sizeof(master_key));
+			secure_memzero_sloth(derived_key, sizeof(derived_key));
 			secure_memzero_sloth(hmac_key, sizeof(hmac_key));
 			secure_memzero_sloth(iv, sizeof(iv));
 			secure_memzero_sloth(ks, sizeof(ks));
 			secure_memzero_sloth(padded_text, sizeof(padded_text));
+			secure_memzero_sloth(password, sizeof(password));
 			fprintf(stderr, "Memory allocation failed for ciphertext.\n");
 			return 1;
 		}
@@ -85,10 +92,12 @@ int enc_sloth(int mode) {
 		unsigned char* data_to_auth = (unsigned char*)malloc(data_to_auth_len);
 		if (!data_to_auth) {
 			secure_memzero_sloth(master_key, sizeof(master_key));
+			secure_memzero_sloth(derived_key, sizeof(derived_key));
 			secure_memzero_sloth(hmac_key, sizeof(hmac_key));
 			secure_memzero_sloth(iv, sizeof(iv));
 			secure_memzero_sloth(ks, sizeof(ks));
 			secure_memzero_sloth(padded_text, sizeof(padded_text));
+			secure_memzero_sloth(password, sizeof(password));
 			free(ciphertext);
 			fprintf(stderr, "Memory allocation failed for data to auth.\n");
 			return 1;
@@ -109,9 +118,11 @@ int enc_sloth(int mode) {
 		if (!output) {
 			secure_memzero_sloth(master_key, sizeof(master_key));
 			secure_memzero_sloth(hmac_key, sizeof(hmac_key));
+			secure_memzero_sloth(derived_key, sizeof(derived_key));
 			secure_memzero_sloth(iv, sizeof(iv));
 			secure_memzero_sloth(ks, sizeof(ks));
 			secure_memzero_sloth(padded_text, sizeof(padded_text));
+			secure_memzero_sloth(password, sizeof(password));
 			free(ciphertext);
 			fprintf(stderr, "Memory allocation failed for output.\n");
 			return 1;
@@ -129,7 +140,7 @@ int enc_sloth(int mode) {
 		secure_memzero_sloth(ks, sizeof(ks));
 		secure_memzero_sloth(block, sizeof(block));
 		secure_memzero_sloth(padded_text, sizeof(padded_text));
-
+		free(hex_output);
 		free(ciphertext);
 		free(output);
 	}
@@ -141,6 +152,8 @@ int enc_sloth(int mode) {
 
 
 		if (secure_random(nonce, sizeof(nonce)) != 0) {
+			secure_memzero_sloth(password, sizeof(password));
+			secure_memzero_sloth(derived_key, sizeof(derived_key));
 			fprintf(stderr, "Failed to generate nonce.\n");
 			return 1;
 		}
@@ -148,12 +161,14 @@ int enc_sloth(int mode) {
 
 		unsigned char* encrypted_text = (unsigned char*)malloc(plaintext_len);
 		if (!encrypted_text) {
+			secure_memzero_sloth(password, sizeof(password));
+			secure_memzero_sloth(derived_key, sizeof(derived_key));
 			fprintf(stderr, "Memory allocation failed for encrypted text.\n");
 			return 1;
 		}
 
 		gcm_encrypt_sloth((unsigned char*)plaintext, plaintext_len, derived_key, nonce, tag, encrypted_text);
-		
+
 		printf("Encrypted: ");
 		for (size_t i = 0; i < plaintext_len; i++) printf("%02X ", plaintext[i]);
 		printf("\nTag: ");
@@ -172,6 +187,7 @@ int enc_sloth(int mode) {
 		printf("Encrypted (Salt + nonce + Ciphertext) HEX:\n%s\n", hex_output);
 		secure_memzero_sloth(nonce, sizeof(nonce));
 		secure_memzero_sloth(tag, sizeof(tag));
+		free(hex_output);
 		free(output);
 		free(encrypted_text);
 	}
@@ -192,8 +208,9 @@ int dec_sloth(int mode) {
 		return 1;
 	}
 	if (get_user_input("Please enter encrypted HEX: ", hex_input, sizeof(hex_input)) != 0) {
+		secure_memzero_sloth(password, sizeof(password));
 		return 1;
-	}	
+	}
 
 	if (mode == 0) {
 		uint8_t iv[IV_SIZE_SLOTH], master_key[KEY_SIZE_SLOTH + HMAC_WHIRLPOOL_KEY_SIZE_SLOTH], hmac_key[HMAC_WHIRLPOOL_KEY_SIZE_SLOTH], hmac_expected[OUTPUT_SIZE_SLOTH], hmac_actual[OUTPUT_SIZE_SLOTH], ks[SERPENT_KSSIZE_SLOTH];
@@ -218,6 +235,7 @@ int dec_sloth(int mode) {
 		ciphertext = (unsigned char*)malloc(ciphertext_len);
 		if (!ciphertext) {
 			fprintf(stderr, "Memory allocation error.\n");
+			secure_memzero_sloth(password, sizeof(password));
 			return 1;
 		}
 		hex_to_uint8_sloth(hex_input + 2 * (sizeof(salt) + sizeof(iv)), ciphertext, ciphertext_len);
@@ -248,6 +266,11 @@ int dec_sloth(int mode) {
 		if (!constant_time_compare_sloth(hmac_expected, hmac_actual, 64)) {
 			fprintf(stderr, "HMAC verification failed! Data may be tampered.\n");
 			free(ciphertext);
+			secure_memzero_sloth(master_key, sizeof(master_key));
+			secure_memzero_sloth(hmac_key, sizeof(hmac_key));
+			secure_memzero_sloth(ks, sizeof(ks));
+			secure_memzero_sloth(derived_key, sizeof(derived_key));
+			secure_memzero_sloth(password, sizeof(password));
 			return 1;
 		}
 
@@ -257,6 +280,12 @@ int dec_sloth(int mode) {
 		unsigned char* decrypted_text = (unsigned char*)malloc(ciphertext_len);
 		if (!decrypted_text) {
 			free(ciphertext);
+			secure_memzero_sloth(master_key, sizeof(master_key));
+			secure_memzero_sloth(hmac_key, sizeof(hmac_key));
+			secure_memzero_sloth(ks, sizeof(ks));
+			secure_memzero_sloth(derived_key, sizeof(derived_key));
+			secure_memzero_sloth(password, sizeof(password));
+			fprintf(stderr, "Memory allocation error.\n");
 			return 1;
 		}
 
@@ -300,17 +329,19 @@ int dec_sloth(int mode) {
 		uint8_t  tag[TAG_SIZE_SLOTH], nonce[NONCE_SIZE_SLOTH];
 		size_t total_len = strlen(hex_input) / 2;
 		if (total_len < sizeof(salt) + sizeof(nonce) + sizeof(tag)) {
+			secure_memzero_sloth(password, sizeof(password));
 			fprintf(stderr, "Invalid input length.\n");
 			return 1;
 		}
 
 		hex_to_uint8_sloth(hex_input, salt, sizeof(salt));
 		hex_to_uint8_sloth(hex_input + 2 * sizeof(salt), nonce, sizeof(nonce));
-		hex_to_uint8_sloth(hex_input + 2 * (sizeof(salt)+sizeof(nonce)), tag, sizeof(tag));
+		hex_to_uint8_sloth(hex_input + 2 * (sizeof(salt) + sizeof(nonce)), tag, sizeof(tag));
 
-		ciphertext_len = total_len - sizeof(salt) - sizeof(nonce) -sizeof(tag);
+		ciphertext_len = total_len - sizeof(salt) - sizeof(nonce) - sizeof(tag);
 		ciphertext = (unsigned char*)malloc(ciphertext_len);
 		if (!ciphertext) {
+			secure_memzero_sloth(password, sizeof(password));
 			fprintf(stderr, "Memory allocation error.\n");
 			return 1;
 		}
@@ -334,6 +365,13 @@ int dec_sloth(int mode) {
 		}
 		else {
 			printf("Authentication failed!\n");
+			secure_memzero_sloth(password, sizeof(password));
+			secure_memzero_sloth(derived_key, sizeof(derived_key));
+			secure_memzero_sloth(salt, sizeof(salt));
+			if (ciphertext) {
+				secure_memzero_sloth(ciphertext, ciphertext_len);
+				free(ciphertext);
+			}
 			return -1;
 		}
 		secure_memzero_sloth(nonce, sizeof(nonce));
@@ -359,24 +397,29 @@ int enc_file_sloth(int mode) {
 		return 1;
 	}
 	if (get_user_input("Enter input file path: ", input_path, sizeof(input_path)) != 0) {
+		secure_memzero_sloth(password, sizeof(password));
 		return 1;
 	}
 	if (get_user_input("Enter output file path: ", output_path, sizeof(output_path)) != 0) {
+		secure_memzero_sloth(password, sizeof(password));
 		return 1;
 	}
 	FILE* infile, * outfile;
 	infile = fopen(input_path, "rb");
 	if (!infile) {
 		fprintf(stderr, "Error opening input file.\n");
+		secure_memzero_sloth(password, sizeof(password));
 		return 1;
 	}
 	outfile = fopen(output_path, "wb");
 	if (!outfile) {
 		fprintf(stderr, "Error opening output file.\n");
+		secure_memzero_sloth(password, sizeof(password));
 		fclose(infile);
 		return 1;
 	}
-	if (secure_random(salt, sizeof(salt)) != 0 ) {
+	if (secure_random(salt, sizeof(salt)) != 0) {
+		secure_memzero_sloth(password, sizeof(password));
 		fprintf(stderr, "Failed to generate salt.\n");
 		return 1;
 	}
@@ -395,6 +438,10 @@ int enc_file_sloth(int mode) {
 
 		if (secure_random(iv, sizeof(iv)) != 0) {
 			fprintf(stderr, "Failed to generate iv.\n");
+			secure_memzero_sloth(master_key, sizeof(master_key));
+			secure_memzero_sloth(hmac_key, sizeof(hmac_key));
+			secure_memzero_sloth(password, sizeof(password));
+			secure_memzero_sloth(derived_key, sizeof(derived_key));
 			return 1;
 		}
 		HMAC_Whirlpool_CTX hmac_ctx;
@@ -465,12 +512,9 @@ int enc_file_sloth(int mode) {
 		uint8_t* buffer = (uint8_t*)malloc(GCM_BLOCK_SIZE_SLOTH);
 		uint8_t* cipher = (uint8_t*)malloc(GCM_BLOCK_SIZE_SLOTH);
 
-		PBKDF2_HMAC_Whirlpool((uint8_t*)password, strlen(password), salt, sizeof(salt), ITERATIONS_SLOTH, sizeof(derived_key), derived_key);
-		print_hex_sloth("Salt", salt, sizeof(salt));
-		print_hex_sloth("Key", derived_key, sizeof(derived_key));
-
 		if (!buffer || !cipher) {
 			handle_error_sloth("Memory allocation failed");
+			secure_memzero_sloth(password, sizeof(password));
 			if (buffer) free(buffer);
 			if (cipher) free(cipher);
 			fclose(outfile);
@@ -478,10 +522,17 @@ int enc_file_sloth(int mode) {
 			return 1;
 		}
 
+		PBKDF2_HMAC_Whirlpool((uint8_t*)password, strlen(password), salt, sizeof(salt), ITERATIONS_SLOTH, sizeof(derived_key), derived_key);
+		print_hex_sloth("Salt", salt, sizeof(salt));
+		print_hex_sloth("Key", derived_key, sizeof(derived_key));
+
+
 		fwrite(salt, 1, sizeof(salt), outfile);
 		size_t bytes_read;
 		while ((bytes_read = fread(buffer, 1, GCM_BLOCK_SIZE_SLOTH, infile)) > 0) {
 			if (secure_random(nonce, NONCE_SIZE_SLOTH) != 0) {
+				secure_memzero_sloth(password, sizeof(password));
+				secure_memzero_sloth(derived_key, sizeof(derived_key));
 				handle_error_sloth("Failed to generate nonce");
 			}
 			gcm_encrypt_sloth(buffer, bytes_read, derived_key, nonce, tag, cipher);
@@ -525,9 +576,11 @@ int dec_file_sloth(int mode) {
 		return 1;
 	}
 	if (get_user_input("Enter input file path: ", input_path, sizeof(input_path)) != 0) {
+		secure_memzero_sloth(password, sizeof(password));
 		return 1;
 	}
 	if (get_user_input("Enter output file path: ", output_path, sizeof(output_path)) != 0) {
+		secure_memzero_sloth(password, sizeof(password));
 		return 1;
 	}
 
@@ -536,11 +589,13 @@ int dec_file_sloth(int mode) {
 	infile = fopen(input_path, "rb");
 	if (!infile) {
 		fprintf(stderr, "Error opening input file.\n");
+		secure_memzero_sloth(password, sizeof(password));
 		return 1;
 	}
 	outfile = fopen(output_path, "wb");
 	if (!outfile) {
 		fprintf(stderr, "Error opening output file.\n");
+		secure_memzero_sloth(password, sizeof(password));
 		fclose(infile);
 		return 1;
 	}
@@ -559,6 +614,7 @@ int dec_file_sloth(int mode) {
 		fread(iv, 1, IV_SIZE_SLOTH, infile);
 
 		if (file_size < SALT_SIZE_SLOTH + IV_SIZE_SLOTH + OUTPUT_SIZE_SLOTH) {
+			secure_memzero_sloth(password, sizeof(password));
 			fprintf(stderr, "File too small.\n");
 			fclose(infile);
 			fclose(outfile);
@@ -626,6 +682,8 @@ int dec_file_sloth(int mode) {
 			secure_memzero_sloth(block, sizeof(block));
 			secure_memzero_sloth(decrypted, sizeof(decrypted));
 			secure_memzero_sloth(prev_block, sizeof(prev_block));
+			secure_memzero_sloth(password, sizeof(password));
+			secure_memzero_sloth(derived_key, sizeof(derived_key));
 			fclose(infile); fclose(outfile);
 			return 1;
 		}
@@ -689,7 +747,10 @@ int hashstr_sloth() {
 	WHIRLPOOL_init(&key_ctx);
 	WHIRLPOOL_add(plaintext, strlen(plaintext), &key_ctx);
 	WHIRLPOOL_finalize(&key_ctx, key_block);
+	int tmp = VERBOSE_SLOTH;
+	VERBOSE_SLOTH = 1;
 	print_hex_sloth("Whirlpool Hash", key_block, BLOCK_SIZE_WHIRLPOOL_SLOTH);
+	VERBOSE_SLOTH = tmp;
 	return 0;
 }
 int hashfile_sloth() {
@@ -712,8 +773,9 @@ int hashfile_sloth() {
 	}
 	fclose(infile);
 	WHIRLPOOL_finalize(&key_ctx, key_block);
+	int tmp = VERBOSE_SLOTH;
 	VERBOSE_SLOTH = 1;
 	print_hex_sloth("Whirlpool Hash", key_block, BLOCK_SIZE_WHIRLPOOL_SLOTH);
-	VERBOSE_SLOTH = 0;
+	VERBOSE_SLOTH = tmp;
 	return 0;
 }
