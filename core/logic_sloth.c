@@ -226,7 +226,7 @@ int dec_sloth(int mode) {
 		// 计算各部分长度
 		size_t header_len = sizeof(salt) + sizeof(iv);
 		size_t hmac_len = OUTPUT_SIZE_SLOTH;
-		size_t ciphertext_len = total_len - header_len - hmac_len;
+		ciphertext_len = total_len - header_len - hmac_len;
 
 		// 提取数据
 		hex_to_uint8_sloth(hex_input, salt, sizeof(salt));
@@ -420,6 +420,8 @@ int enc_file_sloth(int mode) {
 	}
 	if (secure_random(salt, sizeof(salt)) != 0) {
 		secure_memzero_sloth(password, sizeof(password));
+		fclose(outfile);
+		fclose(infile);
 		fprintf(stderr, "Failed to generate salt.\n");
 		return 1;
 	}
@@ -442,6 +444,8 @@ int enc_file_sloth(int mode) {
 			secure_memzero_sloth(hmac_key, sizeof(hmac_key));
 			secure_memzero_sloth(password, sizeof(password));
 			secure_memzero_sloth(derived_key, sizeof(derived_key));
+			fclose(outfile);
+			fclose(infile);
 			return 1;
 		}
 		HMAC_Whirlpool_CTX hmac_ctx;
