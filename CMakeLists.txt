@@ -1,5 +1,9 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.15)
 project(SuperSerpent)
+
+# add_compile_definitions(CRYPTOPP_DISABLE_X86ASM)
+# 可手动控制的有（指的是总开关级别，不看受到另一个宏控制的宏）有CRYPTOPP_DISABLE_X86ASM（汇编总开关），CRYPTOPP_DISABLE_SSSE3（指令集），CRYPTOPP_DISABLE_AESNI（AES），CRYPTOPP_NO_UNALIGNED_DATA_ACCESS（不允许不对齐）
+# CRYPTOPP_GENERATE_X64_MASM（启用MASM，不受到第一个宏的控制），TC_WINDOWS系列（不需要，直接忘掉）
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_BUILD_TYPE Release)
@@ -20,6 +24,9 @@ target_link_libraries(main PRIVATE rand pbkdf2 serpent serpentsimd)
 
 # Windows 设置
 if(WIN32)
+    # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /utf-8")
+    # set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /utf-8")
+
     target_compile_options(main PRIVATE "/MT")
     target_compile_options(rand PRIVATE "/MT")
     target_compile_options(whirlpool PRIVATE "/MT")
