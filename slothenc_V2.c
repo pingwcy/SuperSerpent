@@ -79,7 +79,7 @@ Keyinfo get_file_key(const char *filename, const unsigned char *header, const ch
             memcpy(result.key, key_cache[i].key, KEY_SIZE_SLOTH);
             memcpy(result.ks, key_cache[i].ks, SERPENT_KSSIZE_SLOTH);
             memcpy(result.nonce, header + 16, NONCE_SIZE_SLOTH);
-            fprintf(stderr, "[get file key] Match at %d: filename=%s, salt=%02x%02x...\n",i,key_cache[i].filename, key_cache[i].salt[0], key_cache[i].salt[1]);
+            //fprintf(stderr, "[get file key] Match at %d: filename=%s, salt=%02x%02x...\n",i,key_cache[i].filename, key_cache[i].salt[0], key_cache[i].salt[1]);
             pthread_mutex_unlock(&cache_mutex); // 成功命中缓存，先解锁再返回
             return result;
         }
@@ -110,9 +110,9 @@ Keyinfo get_file_key(const char *filename, const unsigned char *header, const ch
 }
 void ctr_encrypt_sloth(const uint8_t* data, size_t length, const uint8_t* key, uint64_t offset_bytes, uint8_t* encrypted_data, const uint8_t* ks, const uint8_t* nonce) {
     if (!data || !key || !encrypted_data || !ks || !nonce) return;
-    fprintf(stderr, "[ctr_encrypt_sloth] key=%02x%02x%02x...\n",key[0],key[1],key[2]);
-    printf(user_password);
-    printf("\n");
+    //fprintf(stderr, "[ctr_encrypt_sloth] key=%02x%02x%02x...\n",key[0],key[1],key[2]);
+    //printf(user_password);
+    //printf("\n");
 
     uint8_t counter[BLOCK_SIZE_SLOTH];
     uint8_t keystream[BLOCK_SIZE_SLOTH];
@@ -163,6 +163,9 @@ int read_header(FILE *fp, unsigned char *header) {
     return (read_bytes == HEADER_SIZE) ? 0 : -1;
 }
 //////////////////////////////////////////////////////
+static void get_full_path(char *fullpath, const char *path){
+    snprintf(fullpath, PATH_MAX, "%s%s", mount_point, path);
+}
 
 static void update_file_size(MyFile *f) {
     char full_path[PATH_MAX];
@@ -239,140 +242,108 @@ static int myfs_open(const char *path, struct fuse_file_info *fi) {
     MyFile *f = find_file(path);
     if (!f)
         return -ENOENT;
+
     char full_path[PATH_MAX];
     snprintf(full_path, sizeof(full_path), "%s/%s", mount_point, f->name);
 
-    FILE *file = fopen(full_path, "r+b");
-    if (!file)
-        return -EIO;
+    int fd = open(full_path, O_RDWR);
+    if (fd == -1)
+        return -errno;
 
-    fi->fh = (uint64_t)file;  // 保存 FILE* 指针
-
+    fi->fh = fd;  // 保存文件描述符
     return 0;
 }
 
 static int myfs_read(const char *path, char *buf, size_t size, off_t offset,
     struct fuse_file_info *fi) {
-    MyFile *f = find_file(path);
-    if (!f)
-        return -ENOENT;
+MyFile *f = find_file(path);
+if (!f) return -ENOENT;
+if (offset >= f->size) return 0;
 
-    if (offset >= f->size)
-        return 0;
+int fd = fi->fh;
+if (fd < 0) return -EIO;
 
-    size_t total_bytes_read = 0;
-    char buffer[BUFFER_SIZE];
+unsigned char header[HEADER_SIZE];
+if (pread(fd, header, HEADER_SIZE, 0) != HEADER_SIZE)
+return -EIO;
 
-    FILE *file = (FILE *)fi->fh;
-    if (!file)
-        return -EIO;
+Keyinfo rst_sloth = get_file_key(f->name, header, user_password);
+size_t total_bytes_read = 0;
+char buffer[BUFFER_SIZE];
 
-    unsigned char header[HEADER_SIZE];
-    if (read_header(file, header) != 0) {
-        return -EIO;
-    }
+while (total_bytes_read < size) {
+size_t current_offset = offset + total_bytes_read;
+size_t chunk = (size - total_bytes_read > BUFFER_SIZE) ? BUFFER_SIZE : size - total_bytes_read;
 
-    while (total_bytes_read < size) {
-        size_t current_offset = offset + total_bytes_read;
-        size_t remaining_size = size - total_bytes_read;
-        size_t read_size = remaining_size > BUFFER_SIZE ? BUFFER_SIZE : remaining_size;
+ssize_t bytes_read = pread(fd, buffer, chunk, HEADER_SIZE + current_offset);
+if (bytes_read <= 0) break;
 
-        fseek(file, HEADER_SIZE + current_offset, SEEK_SET);
-        ssize_t bytes_read = fread(buffer, 1, read_size, file);
-        if (bytes_read <= 0)
-            break;
+ctr_decrypt_sloth((uint8_t*)buffer, bytes_read, rst_sloth.key, current_offset, rst_sloth.ks, rst_sloth.nonce);
+memcpy(buf + total_bytes_read, buffer, bytes_read);
+total_bytes_read += bytes_read;
+}
 
-        Keyinfo rst_sloth = get_file_key(f->name, header, user_password);
-        ctr_decrypt_sloth((uint8_t*)buffer, bytes_read, rst_sloth.key, current_offset, rst_sloth.ks, rst_sloth.nonce);
-
-        memcpy(buf + total_bytes_read, buffer, bytes_read);
-        total_bytes_read += bytes_read;
-    }
-
-    return total_bytes_read;
+return total_bytes_read;
 }
 
 static int myfs_write(const char *path, const char *buf, size_t size, off_t offset,
-                      struct fuse_file_info *fi) {
-    (void) fi;
-    MyFile *f = find_file(path);
-    if (!f)
-        return -ENOENT;
+    struct fuse_file_info *fi) {
+MyFile *f = find_file(path);
+if (!f) return -ENOENT;
 
-    size_t total_bytes_written = 0;
-    char buffer[BUFFER_SIZE];
+int fd = fi->fh;
+if (fd < 0) return -EIO;
 
-    char full_path[PATH_MAX];
-    snprintf(full_path, sizeof(full_path), "%s/%s", mount_point, f->name);
+unsigned char header[HEADER_SIZE];
+if (pread(fd, header, HEADER_SIZE, 0) != HEADER_SIZE)
+return -EIO;
 
-    FILE *file = fopen(full_path, "r+b");
-    if (!file) {
-        file = fopen(full_path, "wb");
-        if (!file)
-            return -EIO;
-        initialize_header(file); // 新建时写入SALT和NONCE
-    }
+Keyinfo rst_sloth = get_file_key(f->name, header, user_password);
+size_t total_bytes_written = 0;
+char buffer[BUFFER_SIZE];
 
-    unsigned char header[HEADER_SIZE];
-    if (read_header(file, header) != 0) {
-        fclose(file);
-        return -EIO;
-    }
+while (total_bytes_written < size) {
+size_t current_offset = offset + total_bytes_written;
+size_t chunk = (size - total_bytes_written > BUFFER_SIZE) ? BUFFER_SIZE : size - total_bytes_written;
 
-    while (total_bytes_written < size) {
-        size_t current_offset = offset + total_bytes_written;
-        size_t remaining_size = size - total_bytes_written;
-        size_t write_size = remaining_size > BUFFER_SIZE ? BUFFER_SIZE : remaining_size;
+memcpy(buffer, buf + total_bytes_written, chunk);
+ctr_encrypt_sloth((const uint8_t*)buffer, chunk, rst_sloth.key, current_offset, (uint8_t*)buffer, rst_sloth.ks, rst_sloth.nonce);
 
-        memcpy(buffer, buf + total_bytes_written, write_size);
+if (pwrite(fd, buffer, chunk, HEADER_SIZE + current_offset) != chunk)
+return -EIO;
 
-        Keyinfo rst_sloth = get_file_key(f->name, header, user_password);
-        if (1==2){
-            fclose(file);
-            return -EIO;
-        }
-        ctr_encrypt_sloth((const uint8_t*)buffer, write_size, rst_sloth.key, current_offset, (uint8_t*)buffer, rst_sloth.ks, rst_sloth.nonce);
+total_bytes_written += chunk;
+}
 
-        fseek(file, HEADER_SIZE + current_offset, SEEK_SET);
-        fwrite(buffer, 1, write_size, file);
-
-        total_bytes_written += write_size;
-    }
-
-    fflush(file);  // 刷入 libc 缓冲
-    int fd = fileno(file);
-    if (fsync(fd) != 0) {
-        fclose(file);
-        return -EIO;
-    }
-
-    fclose(file);
-
-    update_file_size(f);
-
-    return size;
+fsync(fd);
+update_file_size(f);
+return size;
 }
 
 static int myfs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
-    (void) mode; (void) fi;
-
     if (file_count >= MAX_FILES)
         return -ENOSPC;
+
+    char full_path[PATH_MAX];
+    snprintf(full_path, sizeof(full_path), "%s/%s", mount_point, path + 1);
+
+    int fd = open(full_path, O_CREAT | O_RDWR, 0644);
+    if (fd < 0)
+        return -errno;
+
+    unsigned char header[HEADER_SIZE];
+    if (secure_random(header, HEADER_SIZE) == 0)
+        write(fd, header, HEADER_SIZE);
+    else
+        write(fd, (unsigned char[HEADER_SIZE]){0}, HEADER_SIZE);
+
+    fi->fh = fd;
 
     strncpy(files[file_count].name, path + 1, 255);
     files[file_count].name[255] = '\0';
     files[file_count].size = 0;
     file_count++;
 
-    char full_path[PATH_MAX];
-    snprintf(full_path, sizeof(full_path), "%s/%s", mount_point, files[file_count - 1].name);
-
-    FILE *file = fopen(full_path, "wb");
-    if (file) {
-        initialize_header(file);
-        fclose(file);
-        rescan_files(); 
-    }
     return 0;
 }
 
@@ -484,9 +455,9 @@ static int myfs_rename(const char *from, const char *to) {
     return 0;
 }
 static int myfs_release(const char *path, struct fuse_file_info *fi) {
-    FILE *file = (FILE *)fi->fh;
-    if (file) {
-        fclose(file);
+    int fd = fi->fh;
+    if (fd >= 0) {
+        close(fd);
     }
         // 如果文件名不是 files[] 中的内容，有可能是 LibreOffice 的临时文件
     const char *fname = path + 1;
@@ -508,21 +479,10 @@ static int myfs_flush(const char *path, struct fuse_file_info *fi) {
 }
 
 static int myfs_fsync(const char *path, int isdatasync, struct fuse_file_info *fi) {
-    MyFile *f = find_file(path);
-    if (!f)
-        return -ENOENT;
+    int fd = fi->fh;
+    if (fd < 0) return -EIO;
 
-    char full_path[PATH_MAX];
-    snprintf(full_path, sizeof(full_path), "%s/%s", mount_point, f->name);
-
-    FILE *file = fopen(full_path, "r+b");
-    if (!file)
-        return -EIO;
-
-    int fd = fileno(file);
-    int ret = fsync(fd);  // 强制写入磁盘
-    fclose(file);
-    return (ret == 0) ? 0 : -EIO;
+    return (fsync(fd) == 0) ? 0 : -EIO;
 }
 
 static int myfs_chmod(const char *path, mode_t mode, struct fuse_file_info *fi) {
