@@ -21,12 +21,15 @@
 #include "./vcserpent/SerpentFast.h"
 #include "./pbkdf2/pbkdf2.h"
 #include "./core/utils_sloth.h"
-#define MAX_FILES 128
+#define MAX_FILES 12800
+
 #define BUFFER_SIZE 4096
 //#define PATH_MAX 256
 #define MAX_FILE_SIZE 4096000
 #define HEADER_SIZE 28 // 16字节SALT + 12字节NONCE
 static pthread_mutex_t cache_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t files_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 static char user_password[256]; // 全局密码缓存
 typedef struct {
 	char path[PATH_MAX];
@@ -42,6 +45,8 @@ typedef struct {
 	char path[PATH_MAX];
 	size_t size;
 	int is_dir;//0file 1dir
+	pthread_mutex_t lock; // 每个文件一个锁
+	int lock_initialized;
 } MyFile;
 
 static MyFile files[MAX_FILES];
@@ -204,6 +209,8 @@ void scan_dir_recursive(const char* base_path, const char* relative_path) {
 				strncpy(files[file_count].path, rel_child, PATH_MAX - 1);
 				files[file_count].size = 0; // 目录没有 size
 				files[file_count].is_dir = 1;
+				pthread_mutex_init(&files[file_count].lock, NULL);
+				files[file_count].lock_initialized = 1;			
 				file_count++;
 			}
 			scan_dir_recursive(base_path, rel_child);  // 继续递归
@@ -212,6 +219,8 @@ void scan_dir_recursive(const char* base_path, const char* relative_path) {
 			strncpy(files[file_count].path, rel_child, PATH_MAX - 1);
 			update_file_size(&files[file_count]);
 			files[file_count].is_dir = 0;
+			pthread_mutex_init(&files[file_count].lock, NULL);
+			files[file_count].lock_initialized = 1;		
 			file_count++;
 		}
 	}
@@ -226,19 +235,28 @@ static void load_files() {
 
 
 static void rescan_files() {
+	pthread_mutex_lock(&files_mutex);
+	for (int i = 0; i < file_count; i++) {
+		if (files[i].lock_initialized) {
+			pthread_mutex_destroy(&files[i].lock);
+			files[i].lock_initialized = 0;
+		}
+	}
 	file_count = 0;
 	memset(files, 0, sizeof(files));
-	load_files();  // 重用已有函数
+	load_files();
+	pthread_mutex_unlock(&files_mutex);
 }
 
-
-
 static MyFile* find_file(const char* path) {
+	pthread_mutex_lock(&files_mutex);
 	for (int i = 0; i < file_count; i++) {
 		if (strcmp(path, files[i].path) == 0) {
+			pthread_mutex_unlock(&files_mutex);
 			return &files[i];
 		}
 	}
+	pthread_mutex_unlock(&files_mutex);
 	return NULL;
 }
 
@@ -289,13 +307,18 @@ static int myfs_read(const char* path, char* buf, size_t size, off_t offset,
 	MyFile* f = find_file(path);
 	if (!f) return -ENOENT;
 	if (offset >= f->size) return 0;
+	pthread_mutex_lock(&f->lock);  // 加锁
 
 	int fd = fi->fh;
-	if (fd < 0) return -EIO;
-
-	unsigned char header[HEADER_SIZE];
-	if (pread(fd, header, HEADER_SIZE, 0) != HEADER_SIZE)
+	if (fd < 0) {
+		pthread_mutex_unlock(&f->lock); // 解锁
 		return -EIO;
+	}
+	unsigned char header[HEADER_SIZE];
+	if (pread(fd, header, HEADER_SIZE, 0) != HEADER_SIZE){
+		pthread_mutex_unlock(&f->lock); // 解锁
+		return -EIO;
+	}
 
 	Keyinfo rst_sloth = get_file_key(f->path, header, user_password);
 	size_t total_bytes_read = 0;
@@ -312,6 +335,7 @@ static int myfs_read(const char* path, char* buf, size_t size, off_t offset,
 		memcpy(buf + total_bytes_read, buffer, bytes_read);
 		total_bytes_read += bytes_read;
 	}
+	pthread_mutex_unlock(&f->lock); // 解锁
 
 	return total_bytes_read;
 }
@@ -321,13 +345,17 @@ static int myfs_write(const char* path, const char* buf, size_t size, off_t offs
 	MyFile* f = find_file(path);
 	if (!f) return -ENOENT;
 
+	pthread_mutex_lock(&f->lock);
 	int fd = fi->fh;
-	if (fd < 0) return -EIO;
-
-	unsigned char header[HEADER_SIZE];
-	if (pread(fd, header, HEADER_SIZE, 0) != HEADER_SIZE)
+	if (fd < 0){
+		pthread_mutex_unlock(&f->lock);
 		return -EIO;
-
+	}
+	unsigned char header[HEADER_SIZE];
+	if (pread(fd, header, HEADER_SIZE, 0) != HEADER_SIZE){
+		pthread_mutex_unlock(&f->lock);
+		return -EIO;
+	}
 	Keyinfo rst_sloth = get_file_key(f->path, header, user_password);
 	size_t total_bytes_written = 0;
 	char buffer[BUFFER_SIZE];
@@ -339,27 +367,35 @@ static int myfs_write(const char* path, const char* buf, size_t size, off_t offs
 		memcpy(buffer, buf + total_bytes_written, chunk);
 		ctr_encrypt_sloth((const uint8_t*)buffer, chunk, rst_sloth.key, current_offset, (uint8_t*)buffer, rst_sloth.ks, rst_sloth.nonce);
 
-		if (pwrite(fd, buffer, chunk, HEADER_SIZE + current_offset) != chunk)
+		if (pwrite(fd, buffer, chunk, HEADER_SIZE + current_offset) != chunk){
+			pthread_mutex_unlock(&f->lock);
 			return -EIO;
-
+		}
 		total_bytes_written += chunk;
 	}
 
 	fsync(fd);
 	update_file_size(f);
+	pthread_mutex_unlock(&f->lock);
 	return size;
 }
 
 static int myfs_create(const char* path, mode_t mode, struct fuse_file_info* fi) {
-	if (file_count >= MAX_FILES)
+	pthread_mutex_lock(&files_mutex);
+
+	if (file_count >= MAX_FILES) {
+		pthread_mutex_unlock(&files_mutex);
 		return -ENOSPC;
+	}
 
 	char full_path[PATH_MAX];
 	snprintf(full_path, sizeof(full_path), "%s/%s", mount_point, path);
 
 	int fd = open(full_path, O_CREAT | O_RDWR, 0644);
-	if (fd < 0)
+	if (fd < 0) {
+		pthread_mutex_unlock(&files_mutex);
 		return -errno;
+	}
 
 	unsigned char header[HEADER_SIZE];
 	if (secure_random(header, HEADER_SIZE) == 0)
@@ -373,8 +409,12 @@ static int myfs_create(const char* path, mode_t mode, struct fuse_file_info* fi)
 	files[file_count].path[PATH_MAX - 1] = '\0';
 	files[file_count].is_dir = 0;
 	files[file_count].size = 0;
+	pthread_mutex_init(&files[file_count].lock, NULL);
+	files[file_count].lock_initialized = 1;
 	file_count++;
-	rescan_files();
+
+	pthread_mutex_unlock(&files_mutex);
+
 	return 0;
 }
 
@@ -436,18 +476,19 @@ static int myfs_readdir(const char* path, void* buf, fuse_fill_dir_t filler,
     return 0;
 }
 
-static int myfs_unlink(const char* path) {
+static int myfs_unlink(const char* path) { 
 	char full_path[PATH_MAX];
 	get_full_path(full_path, path);
 
-	// 尝试物理删除
-	if (unlink(full_path) != 0) {
-		return -errno; // 保证返回具体错误
-	}
+	if (unlink(full_path) != 0) return -errno;
 
-	// 更新内存记录
+	pthread_mutex_lock(&files_mutex);
 	for (int i = 0; i < file_count; i++) {
 		if (strcmp(files[i].path, path) == 0) {
+			if (files[i].lock_initialized) {
+				pthread_mutex_destroy(&files[i].lock);
+				files[i].lock_initialized = 0;
+			}
 			for (int j = i; j < file_count - 1; j++) {
 				files[j] = files[j + 1];
 			}
@@ -455,14 +496,16 @@ static int myfs_unlink(const char* path) {
 			break;
 		}
 	}
+	pthread_mutex_unlock(&files_mutex);
 
-	// 清理缓存
+	pthread_mutex_lock(&cache_mutex);
 	for (int i = 0; i < MAX_FILES; i++) {
 		if (key_cache[i].valid && strcmp(key_cache[i].path, path) == 0) {
 			key_cache[i].valid = 0;
 		}
 	}
-	rescan_files();
+	pthread_mutex_unlock(&cache_mutex);
+
 	return 0;
 }
 
@@ -474,6 +517,7 @@ static int myfs_rename(const char* from, const char* to) {
 	int res = rename(full_from, full_to);
 	if (res == -1) return -errno;
 
+	pthread_mutex_lock(&files_mutex);
 	for (int i = 0; i < file_count; i++) {
 		if (strcmp(files[i].path, from) == 0) {
 			strncpy(files[i].path, to, PATH_MAX - 1);
@@ -481,7 +525,16 @@ static int myfs_rename(const char* from, const char* to) {
 			break;
 		}
 	}
-	//update_file_size(&files[i]);
+	pthread_mutex_unlock(&files_mutex);
+
+	pthread_mutex_lock(&cache_mutex);
+	for (int i = 0; i < MAX_FILES; i++) {
+		if (key_cache[i].valid && strcmp(key_cache[i].path, from) == 0) {
+			strncpy(key_cache[i].path, to, PATH_MAX - 1);
+			key_cache[i].path[PATH_MAX - 1] = '\0';
+		}
+	}
+	pthread_mutex_unlock(&cache_mutex);
 	rescan_files();
 	return 0;
 }
