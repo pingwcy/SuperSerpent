@@ -524,7 +524,7 @@ static int myfs_fsync(const char* path, int isdatasync, struct fuse_file_info* f
 
 static int myfs_chmod(const char* path, mode_t mode, struct fuse_file_info* fi) {
 	(void)fi;
-	char fullpath[512];
+	char fullpath[PATH_MAX];
 	get_full_path(fullpath, path);
 
 	int res = chmod(fullpath, mode);
@@ -536,7 +536,7 @@ static int myfs_chmod(const char* path, mode_t mode, struct fuse_file_info* fi) 
 
 static int myfs_chown(const char* path, uid_t uid, gid_t gid, struct fuse_file_info* fi) {
 	(void)fi;
-	char fullpath[512];
+	char fullpath[PATH_MAX];
 	get_full_path(fullpath, path);
 
 	int res = chown(fullpath, uid, gid);
@@ -547,7 +547,7 @@ static int myfs_chown(const char* path, uid_t uid, gid_t gid, struct fuse_file_i
 }
 
 static int myfs_mkdir(const char* path, mode_t mode) {
-	char fullpath[512];
+	char fullpath[PATH_MAX];
 	get_full_path(fullpath, path);
 
 	int res = mkdir(fullpath, mode);
@@ -559,7 +559,7 @@ static int myfs_mkdir(const char* path, mode_t mode) {
 }
 
 static int myfs_rmdir(const char* path) {
-	char fullpath[512];
+	char fullpath[PATH_MAX];
 	get_full_path(fullpath, path);
 
 	int res = rmdir(fullpath);
