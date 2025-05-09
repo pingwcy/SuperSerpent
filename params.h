@@ -25,4 +25,12 @@
 #define HMAC_WHIRLPOOL_KEY_SIZE_SLOTH 32 //HMAC Key size
 #define ENTROPY_POOL_SIZE_SLOTH 2048 //Entropy pool size
 #define HASH_WHIRLPOOL_BUFFER_SIZE 512 //Buffer size for Whirlpool hash
+#define MAX_FILES 12800 //Max files count in FUSE part
+#define BUFFER_SIZE 4096*4096 //FUSE Read/Write File buffer
+//#define PATH_MAX 256
+#define MAX_FILE_SIZE 4096000 //Max file size for FUSE
+#define HEADER_SIZE 28 // 16 bytes SALT + 12 bytes NONCE
+#define FUSE_USE_VERSION 31
+#define _FILE_OFFSET_BITS 64
+
 #endif

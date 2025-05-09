@@ -182,3 +182,50 @@ int gcm_decrypt_sloth(uint8_t* data, size_t length, const uint8_t* key, const ui
 
 	return 0;
 }
+void ctr_encrypt_sloth(const uint8_t* data, size_t length, const uint8_t* key, uint64_t offset_bytes, uint8_t* encrypted_data, const uint8_t* ks, const uint8_t* nonce) {
+	if (!data || !key || !encrypted_data || !ks || !nonce) return;
+	//fprintf(stderr, "[ctr_encrypt_sloth] key=%02x%02x%02x...\n",key[0],key[1],key[2]);
+	//printf(user_password);
+	//printf("\n");
+
+	uint8_t counter[BLOCK_SIZE_SLOTH];
+	uint8_t keystream[BLOCK_SIZE_SLOTH];
+	size_t i = 0;
+
+	while (i < length) {
+		uint64_t block_index = (offset_bytes + i) / BLOCK_SIZE_SLOTH;
+		size_t block_offset = (offset_bytes + i) % BLOCK_SIZE_SLOTH;
+
+		// 构造 counter
+		memcpy(counter, nonce, NONCE_SIZE_SLOTH);
+		counter[12] = (block_index >> 24) & 0xFF;
+		counter[13] = (block_index >> 16) & 0xFF;
+		counter[14] = (block_index >> 8) & 0xFF;
+		counter[15] = (block_index >> 0) & 0xFF;
+
+		serpent_encrypt(counter, keystream, ks);
+
+		size_t chunk = BLOCK_SIZE_SLOTH - block_offset;
+		if (chunk > length - i) chunk = length - i;
+
+		for (size_t j = 0; j < chunk; j++) {
+			encrypted_data[i] = data[i] ^ keystream[block_offset + j];
+			i++;
+		}
+	}
+}
+
+void ctr_decrypt_sloth(uint8_t* data, size_t length, const uint8_t* key, uint64_t block_offset, const uint8_t* ks, const uint8_t* nonce) {
+	ctr_encrypt_sloth(data, length, key, block_offset, data, ks, nonce);
+}
+
+void sloth_kdf(const char* password, const unsigned char* salt, unsigned char* out_key) {
+	const int iterations = ITERATIONS_SLOTH; // 建议的迭代次数，可根据安全需求调整
+	PBKDF2_HMAC_Whirlpool(
+		(const uint8_t*)password, strlen(password),
+		salt, 16, // 假设盐值长度是16字节(128位)
+		iterations,
+		KEY_SIZE_SLOTH,
+		out_key
+	);
+}

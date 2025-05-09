@@ -6,6 +6,7 @@ project(SuperSerpent)
 # CRYPTOPP_GENERATE_X64_MASM（启用MASM，不受到第一个宏的控制），TC_WINDOWS系列（不需要，直接忘掉）
 
 set(CMAKE_C_STANDARD 99)
+set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_BUILD_TYPE Release)
 set(SOURCE_DIR "${CMAKE_SOURCE_DIR}")
 
@@ -16,14 +17,14 @@ add_library(pbkdf2 STATIC ${SOURCE_DIR}/pbkdf2/pbkdf2.c)
 add_library(serpent STATIC ${SOURCE_DIR}/vcserpent/SerpentFast.c)
 add_library(serpentsimd STATIC ${SOURCE_DIR}/vcserpent/SerpentFast_simd.cpp)
 
-add_executable(main ${SOURCE_DIR}/main.c ${SOURCE_DIR}/core/crypto_mode_sloth.c ${SOURCE_DIR}/core/utils_sloth.c ${SOURCE_DIR}/core/logic_sloth.c)
-
-# 关键依赖
-target_link_libraries(pbkdf2 PUBLIC whirlpool)
-target_link_libraries(main PRIVATE rand pbkdf2 serpent serpentsimd)
-
 # Windows 设置
 if(WIN32)
+	add_executable(main ${SOURCE_DIR}/main.c ${SOURCE_DIR}/core/crypto_mode_sloth.c ${SOURCE_DIR}/core/utils_sloth.c ${SOURCE_DIR}/core/logic_sloth.c)
+
+	# 关键依赖
+	target_link_libraries(pbkdf2 PUBLIC whirlpool)
+	target_link_libraries(main PRIVATE rand pbkdf2 serpent serpentsimd)
+
     # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /utf-8")
     # set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /utf-8")
 
@@ -38,23 +39,41 @@ endif()
 
 # Linux 设置
 if(UNIX)
+	add_executable(main ${SOURCE_DIR}/main.c ${SOURCE_DIR}/core/crypto_mode_sloth.c ${SOURCE_DIR}/core/utils_sloth.c ${SOURCE_DIR}/core/logic_sloth.c ${SOURCE_DIR}/core/slothfuse.c)
+	# 关键依赖
+	target_link_libraries(pbkdf2 PUBLIC whirlpool)
+	target_link_libraries(main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/libfuse299_musl.a)
+	target_link_libraries(main PRIVATE rand pbkdf2 serpent serpentsimd)
+
     find_package(Threads REQUIRED)
     target_link_libraries(main PRIVATE ${CMAKE_THREAD_LIBS_INIT})
 
-    # 检测是否为 musl
+    # 步骤1：检查是否为 Alpine Linux（通常使用 MUSL）
     execute_process(
-        COMMAND ldd --version
-        OUTPUT_VARIABLE LDD_OUTPUT
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        ERROR_QUIET
+        COMMAND grep -q "ID=alpine" /etc/os-release 2>/dev/null
+        RESULT_VARIABLE IS_ALPINE
     )
 
-    if(LDD_OUTPUT MATCHES "musl")
-        message(STATUS "Detected musl C library, enabling static linking")
-        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static")
+    # 步骤2：编译探测 MUSL（更通用，不依赖发行版）
+    file(WRITE "${CMAKE_BINARY_DIR}/musl_test.c" "")
+    try_compile(
+        HAVE_MUSL
+        "${CMAKE_BINARY_DIR}"
+        SOURCES "${CMAKE_BINARY_DIR}/musl_test.c"
+        COMPILE_DEFINITIONS "-dM -E"
+        OUTPUT_VARIABLE MUSL_OUT
+    )
+    file(REMOVE "${CMAKE_BINARY_DIR}/musl_test.c")
+
+    # 判断条件：Alpine 或编译输出包含 MUSL 特征
+    if(IS_ALPINE EQUAL 0 OR MUSL_OUT MATCHES "__MUSL__")
+        message(STATUS "Detected MUSL C library (Alpine or generic), enabling static linking")
+        # 强制静态链接（覆盖可能的动态链接默认值）
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static" CACHE STRING "Linker flags" FORCE)
+        # 可选：确保静态链接 libgcc 和 libstdc++
+        # set(CMAKE_CXX_LINK_FLAGS "${CMAKE_CXX_LINK_FLAGS} -static-libgcc -static-libstdc++")
     else()
-        message(STATUS "Detected glibc, keeping dynamic linking")
-        # 动态链接，无需加 -static
+        message(STATUS "Detected glibc (or non-Alpine), keeping dynamic linking")
     endif()
 endif()
 

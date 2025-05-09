@@ -1,7 +1,7 @@
-#define FUSE_USE_VERSION 31
-#define _FILE_OFFSET_BITS 64
+#include "../params.h"
+#include "slothfuse.h"
 #include <libgen.h>
-#include <fuse.h>
+#include "../fuse.h"
 #include <ftw.h>
 #include <stdio.h>
 #include <string.h>
@@ -16,20 +16,14 @@
 #include <utime.h>
 #include <sys/time.h>
 #include <sys/statvfs.h>
-#include "./rand/rand.h"
-#include "params.h"
-#include "./vcserpent/SerpentFast.h"
-#include "./pbkdf2/pbkdf2.h"
-#include "./core/utils_sloth.h"
-#define MAX_FILES 12800
+#include "../rand/rand.h"
+#include "../vcserpent/SerpentFast.h"
+#include "../pbkdf2/pbkdf2.h"
+#include "utils_sloth.h"
+#include "crypto_mode_sloth.h"
 
-#define BUFFER_SIZE 4096
-//#define PATH_MAX 256
-#define MAX_FILE_SIZE 4096000
-#define HEADER_SIZE 28 // 16字节SALT + 12字节NONCE
 static pthread_mutex_t cache_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t files_mutex = PTHREAD_MUTEX_INITIALIZER;
-
 static char user_password[256]; // 全局密码缓存
 typedef struct {
 	char path[PATH_MAX];
@@ -60,16 +54,6 @@ typedef struct {
 } Keyinfo;
 
 ///////////////////// 加密相关 ///////////////////////
-void sloth_kdf(const char* password, const unsigned char* salt, unsigned char* out_key) {
-	const int iterations = ITERATIONS_SLOTH; // 建议的迭代次数，可根据安全需求调整
-	PBKDF2_HMAC_Whirlpool(
-		(const uint8_t*)password, strlen(password),
-		salt, 16, // 假设盐值长度是16字节(128位)
-		iterations,
-		KEY_SIZE_SLOTH,
-		out_key
-	);
-}
 
 Keyinfo get_file_key(const char* filename, const unsigned char* header, const char* password) {
 	// 加锁（阻塞式）
@@ -114,42 +98,6 @@ Keyinfo get_file_key(const char* filename, const unsigned char* header, const ch
 	// 如果没有找到空位
 	pthread_mutex_unlock(&cache_mutex); // 返回前必须解锁
 	return (Keyinfo) { 0 }; // 返回无效结果
-}
-void ctr_encrypt_sloth(const uint8_t* data, size_t length, const uint8_t* key, uint64_t offset_bytes, uint8_t* encrypted_data, const uint8_t* ks, const uint8_t* nonce) {
-	if (!data || !key || !encrypted_data || !ks || !nonce) return;
-	//fprintf(stderr, "[ctr_encrypt_sloth] key=%02x%02x%02x...\n",key[0],key[1],key[2]);
-	//printf(user_password);
-	//printf("\n");
-
-	uint8_t counter[BLOCK_SIZE_SLOTH];
-	uint8_t keystream[BLOCK_SIZE_SLOTH];
-	size_t i = 0;
-
-	while (i < length) {
-		uint64_t block_index = (offset_bytes + i) / BLOCK_SIZE_SLOTH;
-		size_t block_offset = (offset_bytes + i) % BLOCK_SIZE_SLOTH;
-
-		// 构造 counter
-		memcpy(counter, nonce, NONCE_SIZE_SLOTH);
-		counter[12] = (block_index >> 24) & 0xFF;
-		counter[13] = (block_index >> 16) & 0xFF;
-		counter[14] = (block_index >> 8) & 0xFF;
-		counter[15] = (block_index >> 0) & 0xFF;
-
-		serpent_encrypt(counter, keystream, ks);
-
-		size_t chunk = BLOCK_SIZE_SLOTH - block_offset;
-		if (chunk > length - i) chunk = length - i;
-
-		for (size_t j = 0; j < chunk; j++) {
-			encrypted_data[i] = data[i] ^ keystream[block_offset + j];
-			i++;
-		}
-	}
-}
-
-void ctr_decrypt_sloth(uint8_t* data, size_t length, const uint8_t* key, uint64_t block_offset, const uint8_t* ks, const uint8_t* nonce) {
-	ctr_encrypt_sloth(data, length, key, block_offset, data, ks, nonce);
 }
 
 
@@ -322,8 +270,8 @@ static int myfs_read(const char* path, char* buf, size_t size, off_t offset,
 
 	Keyinfo rst_sloth = get_file_key(f->path, header, user_password);
 	size_t total_bytes_read = 0;
-	char buffer[BUFFER_SIZE];
-
+	//char buffer[BUFFER_SIZE];
+    char* buffer = malloc(BUFFER_SIZE);
 	while (total_bytes_read < size) {
 		size_t current_offset = offset + total_bytes_read;
 		size_t chunk = (size - total_bytes_read > BUFFER_SIZE) ? BUFFER_SIZE : size - total_bytes_read;
@@ -336,7 +284,7 @@ static int myfs_read(const char* path, char* buf, size_t size, off_t offset,
 		total_bytes_read += bytes_read;
 	}
 	pthread_mutex_unlock(&f->lock); // 解锁
-
+    free(buffer);
 	return total_bytes_read;
 }
 
@@ -358,8 +306,8 @@ static int myfs_write(const char* path, const char* buf, size_t size, off_t offs
 	}
 	Keyinfo rst_sloth = get_file_key(f->path, header, user_password);
 	size_t total_bytes_written = 0;
-	char buffer[BUFFER_SIZE];
-
+	//char buffer[BUFFER_SIZE];
+    char* buffer = malloc(BUFFER_SIZE);
 	while (total_bytes_written < size) {
 		size_t current_offset = offset + total_bytes_written;
 		size_t chunk = (size - total_bytes_written > BUFFER_SIZE) ? BUFFER_SIZE : size - total_bytes_written;
@@ -369,14 +317,16 @@ static int myfs_write(const char* path, const char* buf, size_t size, off_t offs
 
 		if (pwrite(fd, buffer, chunk, HEADER_SIZE + current_offset) != chunk){
 			pthread_mutex_unlock(&f->lock);
+            free(buffer);
 			return -EIO;
 		}
 		total_bytes_written += chunk;
 	}
 
-	fsync(fd);
+	//fsync(fd);
 	update_file_size(f);
 	pthread_mutex_unlock(&f->lock);
+    free(buffer);
 	return size;
 }
 
@@ -541,6 +491,8 @@ static int myfs_rename(const char* from, const char* to) {
 
 static int myfs_release(const char* path, struct fuse_file_info* fi) {
 	int fd = fi->fh;
+    //printf("Synced");
+    fsync(fd);
 	if (fd >= 0) {
 		close(fd);
 	}
@@ -640,35 +592,33 @@ static struct fuse_operations myfs_oper = {
 	.release = myfs_release,
 	.flush = myfs_flush,
 	.fsync = myfs_fsync,
-	.chmod = myfs_chmod,
-	.chown = myfs_chown,
+	//.chmod = myfs_chmod,
+	//.chown = myfs_chown,
 	.mkdir = myfs_mkdir,
 	.rmdir = myfs_rmdir,
+#ifdef HAVE_UTIMENSAT
 	.utimens = myfs_utimens,
+#endif
 	.access = myfs_access,
 	.statfs = myfs_statfs,
 
 };
 
-int main(int argc, char* argv[]) {
-	secure_memzero_sloth(key_cache, sizeof(key_cache));
-	secure_memzero_sloth(files, sizeof(files));
+int main_fuse_sloth(int argc, char* argv[]) {
 	if (argc < 3) {
 		fprintf(stderr, "Usage: %s <mount-point> <directory>\n", argv[0]);
 		exit(1);
 	}
-	printf("Please Enter Password: ");
-	if (!fgets(user_password, sizeof(user_password), stdin)) {
-		fprintf(stderr, "Cannot Read Password\n");
-		exit(1);
+	else{
+		if (get_user_input("Please Enter Password: ", user_password, sizeof(user_password)) != 0) {
+			//continue;
+		}
+		strcpy(mount_point, argv[2]);
+		char* new_argv[] = { argv[0], argv[1], "-f", "-o", "nonempty,allow_other" };
+		int new_argc = 5;
+
+		srand(time(NULL));
+		load_files();
+		return fuse_main(new_argc, new_argv, &myfs_oper, NULL);
 	}
-	user_password[strcspn(user_password, "\n")] = 0; // 去除换行
-
-	strcpy(mount_point, argv[2]);
-	char* new_argv[] = { argv[0], argv[1], "-f", "-o", "nonempty" };
-	int new_argc = 5;
-
-	srand(time(NULL));
-	load_files();
-	return fuse_main(new_argc, new_argv, &myfs_oper, NULL);
 }
