@@ -43,6 +43,7 @@
 mkdir build && cd build
 cmake ..
 make
+```
 CMake will detect the system's C library:
 
 For glibc, a standard static binary is built
@@ -61,15 +62,17 @@ Only the file encryption tool is compiled
 
 ## 🚀 Usage
 ### 🔐 File Encryption Mode (Linux & Windows)
-bash
+```bash
 ./main
+```
 Interactive command-line utility
 
 Prompts for file path, mode (CBC-HMAC or GCM), and password
 
 ### 🔐 Transparent Filesystem Encryption (Linux Only)
-bash
+```bash
 ./main [VIRTUAL_MOUNT_POINT] [ENCRYPTED_BACKEND_DIR]
+```
 Mounts a virtual encrypted filesystem using FUSE
 
 Prompts for a password to derive the encryption key
