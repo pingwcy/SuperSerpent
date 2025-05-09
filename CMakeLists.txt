@@ -39,12 +39,9 @@ endif()
 
 # Linux 设置
 if(UNIX)
-	add_executable(main ${SOURCE_DIR}/main.c ${SOURCE_DIR}/core/crypto_mode_sloth.c ${SOURCE_DIR}/core/utils_sloth.c ${SOURCE_DIR}/core/logic_sloth.c ${SOURCE_DIR}/core/slothfuse.c)
-	# 关键依赖
-	target_link_libraries(pbkdf2 PUBLIC whirlpool)
-	target_link_libraries(main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/libfuse299_musl.a)
+    add_executable(main ${SOURCE_DIR}/main.c ${SOURCE_DIR}/core/crypto_mode_sloth.c ${SOURCE_DIR}/core/utils_sloth.c ${SOURCE_DIR}/core/logic_sloth.c ${SOURCE_DIR}/core/slothfuse.c)
+    target_link_libraries(pbkdf2 PUBLIC whirlpool)
 	target_link_libraries(main PRIVATE rand pbkdf2 serpent serpentsimd)
-
     find_package(Threads REQUIRED)
     target_link_libraries(main PRIVATE ${CMAKE_THREAD_LIBS_INIT})
 
@@ -68,12 +65,14 @@ if(UNIX)
     # 判断条件：Alpine 或编译输出包含 MUSL 特征
     if(IS_ALPINE EQUAL 0 OR MUSL_OUT MATCHES "__MUSL__")
         message(STATUS "Detected MUSL C library (Alpine or generic), enabling static linking")
+        target_link_libraries(main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/libfuse299_musl.a)
         # 强制静态链接（覆盖可能的动态链接默认值）
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static" CACHE STRING "Linker flags" FORCE)
         # 可选：确保静态链接 libgcc 和 libstdc++
         # set(CMAKE_CXX_LINK_FLAGS "${CMAKE_CXX_LINK_FLAGS} -static-libgcc -static-libstdc++")
     else()
         message(STATUS "Detected glibc (or non-Alpine), keeping dynamic linking")
+        target_link_libraries(main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/libfuse299_glibc.a)
     endif()
 endif()
 
