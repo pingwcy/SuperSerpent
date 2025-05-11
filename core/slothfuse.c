@@ -58,6 +58,7 @@ typedef struct {
 } Keyinfo;
 ///
 void remove_file_lock(const char* path) {
+	if (!path) return;
     pthread_mutex_lock(&lock_table_mutex);
 
     LockEntry* entry;
@@ -71,6 +72,7 @@ void remove_file_lock(const char* path) {
     pthread_mutex_unlock(&lock_table_mutex);
 }
 void remove_cached_key(const char* path) {
+	if (!path) return;
     pthread_mutex_lock(&key_cache_mutex);
 
     KeyCacheEntry* entry;
@@ -83,41 +85,52 @@ void remove_cached_key(const char* path) {
     pthread_mutex_unlock(&key_cache_mutex);
 }
 void rename_file_lock(const char* old_path, const char* new_path) {
-	if (!old_path || !new_path || strlen(new_path) >= PATH_MAX) return;
+    if (!old_path || !new_path || strlen(new_path) >= PATH_MAX) return;
+
     pthread_mutex_lock(&lock_table_mutex);
+
+    // 检查是否冲突
+    LockEntry* existing;
+    HASH_FIND_STR(lock_table, new_path, existing);
+    if (existing) {
+        pthread_mutex_unlock(&lock_table_mutex);
+        return; // 已存在新路径，避免冲突
+    }
 
     LockEntry* entry;
     HASH_FIND_STR(lock_table, old_path, entry);
     if (entry) {
-        // 从哈希表中移除旧路径
         HASH_DEL(lock_table, entry);
-
-        // 更新路径
         strncpy(entry->path, new_path, PATH_MAX - 1);
         entry->path[PATH_MAX - 1] = '\0';
-
-        // 重新添加到哈希表
         HASH_ADD_STR(lock_table, path, entry);
     }
+
     pthread_mutex_unlock(&lock_table_mutex);
 }
+
 void rename_cached_key(const char* old_path, const char* new_path) {
-	if (!old_path || !new_path || strlen(new_path) >= PATH_MAX) return;
+    if (!old_path || !new_path || strlen(new_path) >= PATH_MAX) return;
+
     pthread_mutex_lock(&key_cache_mutex);
+
+    // 检查是否已存在新路径，避免覆盖
+    KeyCacheEntry* existing;
+    HASH_FIND_STR(key_cache, new_path, existing);
+    if (existing) {
+        pthread_mutex_unlock(&key_cache_mutex);
+        return;
+    }
 
     KeyCacheEntry* entry;
     HASH_FIND_STR(key_cache, old_path, entry);
     if (entry) {
-        // 从哈希表中移除旧路径
         HASH_DEL(key_cache, entry);
-
-        // 更新路径
         strncpy(entry->path, new_path, PATH_MAX - 1);
         entry->path[PATH_MAX - 1] = '\0';
-
-        // 重新添加到哈希表
         HASH_ADD_STR(key_cache, path, entry);
     }
+
     pthread_mutex_unlock(&key_cache_mutex);
 }
 
@@ -137,23 +150,38 @@ Keyinfo get_file_key(const char* path, const unsigned char* header, const char* 
         return result;
     }
 
-    // Cache miss: 创建新 entry
-	entry = malloc(sizeof(KeyCacheEntry));
-	if (!entry) {
-    	pthread_mutex_unlock(&key_cache_mutex);
-    	printf("===MEM ALLOC ERROR===");
-    return result; // result is zeroed earlier
-	}
-    strncpy(entry->path, path, PATH_MAX - 1);
-    memcpy(entry->salt, header, 16);
-    sloth_kdf(password, header, entry->key);
-    serpent_set_key(entry->key, entry->ks);
+    pthread_mutex_unlock(&key_cache_mutex);
 
-    memcpy(result.key, entry->key, KEY_SIZE_SLOTH);
-    memcpy(result.ks, entry->ks, SERPENT_KSSIZE_SLOTH);
+    // 创建新 entry
+    KeyCacheEntry* new_entry = malloc(sizeof(KeyCacheEntry));
+    if (!new_entry) {
+        printf("===MEM ALLOC ERROR===\n");
+        return result;
+    }
+    strncpy(new_entry->path, path, PATH_MAX - 1);
+    new_entry->path[PATH_MAX - 1] = '\0';
+    memcpy(new_entry->salt, header, 16);
+    sloth_kdf(password, header, new_entry->key);
+    serpent_set_key(new_entry->key, new_entry->ks);
+
+    memcpy(result.key, new_entry->key, KEY_SIZE_SLOTH);
+    memcpy(result.ks, new_entry->ks, SERPENT_KSSIZE_SLOTH);
     memcpy(result.nonce, header + 16, NONCE_SIZE_SLOTH);
 
-    HASH_ADD_STR(key_cache, path, entry);
+    // 再次上锁添加到缓存（并检查是否已有其他线程添加）
+    pthread_mutex_lock(&key_cache_mutex);
+    HASH_FIND_STR(key_cache, path, entry);
+    if (!entry) {
+        HASH_ADD_STR(key_cache, path, new_entry);
+    } else {
+        // 如果其他线程已插入，使用其内容，释放我们创建的 entry
+        if (memcmp(entry->salt, header, 16) == 0) {
+            memcpy(result.key, entry->key, KEY_SIZE_SLOTH);
+            memcpy(result.ks, entry->ks, SERPENT_KSSIZE_SLOTH);
+            memcpy(result.nonce, header + 16, NONCE_SIZE_SLOTH);
+        }
+        free(new_entry);
+    }
     pthread_mutex_unlock(&key_cache_mutex);
     return result;
 }
@@ -164,14 +192,27 @@ FileLock* get_or_create_lock(const char* path) {
     pthread_mutex_lock(&lock_table_mutex);
     HASH_FIND_STR(lock_table, path, entry);
     if (!entry) {
-        entry = malloc(sizeof(LockEntry));
-        strncpy(entry->path, path, PATH_MAX - 1);
-        pthread_rwlock_init(&entry->fl.lock, NULL);
-        HASH_ADD_STR(lock_table, path, entry);
+        // 先创建新 entry，避免在锁内长时间运行
+        LockEntry* new_entry = malloc(sizeof(LockEntry));
+        if (new_entry) {
+            strncpy(new_entry->path, path, PATH_MAX - 1);
+            new_entry->path[PATH_MAX - 1] = '\0';
+            pthread_rwlock_init(&new_entry->fl.lock, NULL);
+
+            // 再次检查哈希表中是否已插入（另一个线程可能已完成）
+            HASH_FIND_STR(lock_table, path, entry);
+            if (!entry) {
+                HASH_ADD_STR(lock_table, path, new_entry);
+                entry = new_entry;
+            } else {
+                // 已存在，释放我们刚创建的 entry
+                pthread_rwlock_destroy(&new_entry->fl.lock);
+                free(new_entry);
+            }
+        }
     }
     pthread_mutex_unlock(&lock_table_mutex);
-
-    return &entry->fl;
+    return entry ? &entry->fl : NULL;
 }
 
 // 填充SALT和NONCE
