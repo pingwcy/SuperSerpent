@@ -495,15 +495,15 @@ static int myfs_fsync(const char* path, int isdatasync, struct fuse_file_info* f
 	return (fsync(fd) == 0) ? 0 : -errno;
 }
 
-static int myfs_chmod(const char* path, mode_t mode, struct fuse_file_info* fi) {
-	(void)fi;
+static int myfs_chmod(const char* path, mode_t mode) {
+	//(void)fi;
 	char fullpath[PATH_MAX];
 	get_full_path(fullpath, path);
 	return (chmod(fullpath, mode) == 0) ? 0 : -errno;
 }
 
-static int myfs_chown(const char* path, uid_t uid, gid_t gid, struct fuse_file_info* fi) {
-	(void)fi;
+static int myfs_chown(const char* path, uid_t uid, gid_t gid) {
+	//(void)fi;
 	char fullpath[PATH_MAX];
 	get_full_path(fullpath, path);
 	return (chown(fullpath, uid, gid) == 0) ? 0 : -errno;
@@ -522,12 +522,232 @@ static int myfs_rmdir(const char* path) {
 }
 
 static int myfs_utimens(const char* path, const struct timespec tv[2], struct fuse_file_info* fi) {
+	(void) fi;
+	int res;
+	char fullpath[PATH_MAX];
+	get_full_path(fullpath, path);
+
+	/* don't use utime/utimes since they follow symlinks */
+	res = utimensat(0, fullpath, tv, AT_SYMLINK_NOFOLLOW);
+	if (res == -1)
+		return -errno;
+
 	return 0;
 }
 static int myfs_access(const char* path, int mask) {
+	int res;
+	char fullpath[PATH_MAX];
+	get_full_path(fullpath, path);
+
+	res = access(fullpath, mask);
+	if (res == -1)
+		return -errno;
+
 	return 0;
 }
 static int myfs_statfs(const char* path, struct statvfs* stbuf) {
+	int res;
+	char fullpath[PATH_MAX];
+	get_full_path(fullpath, path);
+
+	res = statvfs(fullpath, stbuf);
+	if (res == -1)
+		return -errno;
+
+	return 0;
+}
+#ifdef HAVE_POSIX_FALLOCATE
+static int myfs_fallocate(const char *path, int mode,
+			off_t offset, off_t length, struct fuse_file_info *fi)
+{
+	int fd;
+	int res;
+
+	(void) fi;
+
+	if (mode)
+		return -EOPNOTSUPP;
+
+	if(fi == NULL)
+		fd = open(path, O_WRONLY);
+	else
+		fd = fi->fh;
+	
+	if (fd == -1)
+		return -errno;
+
+	res = -posix_fallocate(fd, offset, length);
+
+	if(fi == NULL)
+		close(fd);
+	return res;
+}
+#endif
+
+#ifdef HAVE_SETXATTR
+/* xattr operations are optional and can safely be left unimplemented */
+static int myfs_setxattr(const char *path, const char *name, const char *value,
+			size_t size, int flags)
+{
+	char fullpath[PATH_MAX];
+	get_full_path(fullpath, path);
+
+	int res = lsetxattr(fullpath, name, value, size, flags);
+	if (res == -1)
+		return -errno;
+	return 0;
+}
+
+static int myfs_getxattr(const char *path, const char *name, char *value,
+			size_t size)
+{
+	char fullpath[PATH_MAX];
+	get_full_path(fullpath, path);
+
+	int res = lgetxattr(fullpath, name, value, size);
+	if (res == -1)
+		return -errno;
+	return res;
+}
+
+static int myfs_listxattr(const char *path, char *list, size_t size)
+{
+	char fullpath[PATH_MAX];
+	get_full_path(fullpath, path);
+
+	int res = llistxattr(fullpath, list, size);
+	if (res == -1)
+		return -errno;
+	return res;
+}
+
+static int myfs_removexattr(const char *path, const char *name)
+{
+	char fullpath[PATH_MAX];
+	get_full_path(fullpath, path);
+
+	int res = lremovexattr(fullpath, name);
+	if (res == -1)
+		return -errno;
+	return 0;
+}
+#endif /* HAVE_SETXATTR */
+
+#ifdef HAVE_COPY_FILE_RANGE
+static ssize_t myfs_copy_file_range(const char *path_in,
+				   struct fuse_file_info *fi_in,
+				   off_t offset_in, const char *path_out,
+				   struct fuse_file_info *fi_out,
+				   off_t offset_out, size_t len, int flags)
+{
+	int fd_in, fd_out;
+	ssize_t res;
+
+	if(fi_in == NULL)
+		fd_in = open(path_in, O_RDONLY);
+	else
+		fd_in = fi_in->fh;
+
+	if (fd_in == -1)
+		return -errno;
+
+	if(fi_out == NULL)
+		fd_out = open(path_out, O_WRONLY);
+	else
+		fd_out = fi_out->fh;
+
+	if (fd_out == -1) {
+		close(fd_in);
+		return -errno;
+	}
+
+	res = copy_file_range(fd_in, &offset_in, fd_out, &offset_out, len,
+			      flags);
+	if (res == -1)
+		res = -errno;
+
+	if (fi_out == NULL)
+		close(fd_out);
+	if (fi_in == NULL)
+		close(fd_in);
+
+	return res;
+}
+#endif
+
+static off_t myfs_lseek(const char *path, off_t off, int whence, struct fuse_file_info *fi)
+{
+	int fd;
+	off_t res;
+
+	if (fi == NULL)
+		fd = open(path, O_RDONLY);
+	else
+		fd = fi->fh;
+
+	if (fd == -1)
+		return -errno;
+
+	res = lseek(fd, off, whence);
+	if (res == -1)
+		res = -errno;
+
+	if (fi == NULL)
+		close(fd);
+	return res;
+}
+
+static int myfs_link(const char *from, const char *to)
+{
+	int res;
+	char fullpath1[PATH_MAX];
+	get_full_path(fullpath1, from);
+	char fullpath2[PATH_MAX];
+	get_full_path(fullpath2, to);
+
+	res = link(fullpath1, fullpath2);
+	if (res == -1)
+		return -errno;
+
+	return 0;
+}
+static int myfs_symlink(const char *from, const char *to)
+{
+	int res;
+	char fullpath1[PATH_MAX];
+	get_full_path(fullpath1, from);
+	char fullpath2[PATH_MAX];
+	get_full_path(fullpath2, to);
+
+	res = symlink(fullpath1, fullpath2);
+	if (res == -1)
+		return -errno;
+
+	return 0;
+}
+static int myfs_mknod(const char *path, mode_t mode, dev_t rdev)
+{
+	int res;
+	char fullpath[PATH_MAX];
+	get_full_path(fullpath, path);
+
+	res = mknod(fullpath, mode, rdev);
+	if (res == -1)
+		return -errno;
+
+	return 0;
+}
+static int myfs_readlink(const char *path, char *buf, size_t size)
+{
+	int res;
+	char fullpath[PATH_MAX];
+	get_full_path(fullpath, path);
+
+	res = readlink(fullpath, buf, size - 1);
+	if (res == -1)
+		return -errno;
+
+	buf[res] = '\0';
 	return 0;
 }
 
@@ -544,15 +764,32 @@ static struct fuse_operations myfs_oper = {
 	.release = myfs_release,
 	.flush = myfs_flush,
 	.fsync = myfs_fsync,
-	//.chmod = myfs_chmod,
-	//.chown = myfs_chown,
+	.chmod = myfs_chmod,
+	.chown = myfs_chown,
 	.mkdir = myfs_mkdir,
 	.rmdir = myfs_rmdir,
+	.readlink = myfs_readlink,
+	.mknod = myfs_mknod,
+	.symlink = myfs_symlink,
+	.link = myfs_link,
 #ifdef HAVE_UTIMENSAT
 	.utimens = myfs_utimens,
 #endif
 	.access = myfs_access,
 	.statfs = myfs_statfs,
+#ifdef HAVE_POSIX_FALLOCATE
+	//.fallocate	= myfs_fallocate, //Not Implemented
+#endif
+#ifdef HAVE_SETXATTR
+	.setxattr	= myfs_setxattr,
+	.getxattr	= myfs_getxattr,
+	.listxattr	= myfs_listxattr,
+	.removexattr	= myfs_removexattr,
+#endif
+#ifdef HAVE_COPY_FILE_RANGE
+	//.copy_file_range = myfs_copy_file_range, //Not Implemented
+#endif
+	//.lseek		= myfs_lseek, //Not Implemented
 
 };
 
