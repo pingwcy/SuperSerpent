@@ -1,4 +1,4 @@
-# SuperSerpent: A Dual-Mode File Encryption Tool
+# SuperSerpent: A Dual-Mode File/FileSystem Encryption Tool
 
 **SuperSerpent** is an experimental and educational project that implements both **transparent filesystem encryption** (via FUSE on Linux) and **interactive file-level encryption** with strong cryptographic algorithms and high portability.
 
@@ -14,7 +14,7 @@
   - **Filesystem mode**: CTR
   - **File mode**: Optional CBC-HMAC or GCM
 - 🔑 **Key Derivation**: PBKDF2-HMAC-Whirlpool
-- 🧩 **Zero runtime dependencies** beyond the standard C library
+- 🧩 **Zero runtime dependencies** beyond the standard C library(glibc) OR only Linux Kernel(MUSL)
 - 🧷 **Statically linked libfuse v2.9.9**:
   - Supports both glibc (≥ 2.31) and musl
   - Fully static binary on musl-based systems for maximum compatibility
@@ -51,10 +51,11 @@ For glibc, a standard static binary is built
 For musl, a fully static binary is built with all dependencies included
 
 ### Windows
-
+```bash
 mkdir build && cd build
 cmake -G ..
 msbuild
+```
 FUSE-related components are excluded (via conditional compilation)
 
 Only the file encryption tool is compiled
@@ -84,7 +85,7 @@ All files written to ~/secure are transparently encrypted and stored in ~/vault.
 
  Add a GUI for file encryption
 
- Explore Android support via JNI + FUSE
+ // Explore Android support
 
 ## ⚠️ Disclaimer
 This is an experimental project intended for educational use only.

@@ -3,27 +3,31 @@ name: CMake Build
 on:
   push:
     branches:
-      - main  
+      - main
+    paths-ignore:
+      - 'README.md'
   pull_request:
     branches:
       - main
+    paths-ignore:
+      - 'README.md'
 
 jobs:
   build:
     runs-on: ubuntu-latest  
 
     steps:
-      - name: 检出代码
+      - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: 安装 CMake
+      - name: Install CMake
         run: sudo apt update && sudo apt install -y cmake g++ ninja-build
 
-      - name: 创建构建目录
+      - name: Make building dir
         run: mkdir -p build
 
-      - name: 运行 CMake 生成构建文件
+      - name: Run CMake
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
-      - name: 编译项目
+      - name: Compile project
         run: cmake --build build --config Release
