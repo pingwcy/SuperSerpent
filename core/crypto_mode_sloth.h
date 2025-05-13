@@ -3,6 +3,9 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 // GCM 加密函数
 void gcm_encrypt_sloth(const uint8_t* data, size_t length, const uint8_t* key, const uint8_t* iv, uint8_t* tag, uint8_t* encrypted_data);
@@ -18,5 +21,9 @@ void ctr_decrypt_sloth(uint8_t* data, size_t length, const uint8_t* key, uint64_
 
 // KDF Wrapper for FUSE using
 void sloth_kdf(const char* password, const unsigned char* salt, unsigned char* out_key);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // CRYPTO_MODE_SLOTH_H
