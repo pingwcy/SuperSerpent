@@ -1,5 +1,10 @@
 # SuperSerpent: A Dual-Mode File/FileSystem Encryption Tool
 
+<a href="https://scan.coverity.com/projects/pingwcy-superserpent">
+  <img alt="Coverity Scan Build Status"
+       src="https://scan.coverity.com/projects/31700/badge.svg"/>
+</a>
+
 **SuperSerpent** is an experimental and educational project that implements both **transparent filesystem encryption** (via FUSE on Linux) and **interactive file-level encryption** with strong cryptographic algorithms and high portability.
 
 ---
@@ -35,7 +40,7 @@
 ### Requirements
 
 - **CMake**
-- **A C compiler** (e.g., `gcc`, `clang`)
+- **A C compiler** (e.g., `gcc`, `clang`, `MSVC`)
 
 ### Linux (glibc or musl)
 
