@@ -1,5 +1,7 @@
 # SuperSerpent: A Dual-Mode File/FileSystem Encryption Tool
 
+![Github Action](https://github.com/pingwcy/SuperSerpent/actions/workflows/build.yml/badge.svg)
+
 <a href="https://scan.coverity.com/projects/pingwcy-superserpent">
   <img alt="Coverity Scan Build Status"
        src="https://scan.coverity.com/projects/31700/badge.svg"/>
