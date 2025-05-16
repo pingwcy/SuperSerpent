@@ -141,8 +141,11 @@ Keyinfo get_file_key(const char* path, const unsigned char* header, const char* 
     Keyinfo result = {0};
 
     pthread_mutex_lock(&key_cache_mutex);
+
+    // 查找缓存
     HASH_FIND_STR(key_cache, path, entry);
     if (entry && memcmp(entry->salt, header, 16) == 0) {
+        // 缓存命中，直接返回
         memcpy(result.key, entry->key, KEY_SIZE_SLOTH);
         memcpy(result.ks, entry->ks, SERPENT_KSSIZE_SLOTH);
         memcpy(result.nonce, header + 16, NONCE_SIZE_SLOTH);
@@ -150,12 +153,11 @@ Keyinfo get_file_key(const char* path, const unsigned char* header, const char* 
         return result;
     }
 
-    pthread_mutex_unlock(&key_cache_mutex);
-
-    // 创建新 entry
+    // 构造新 entry
     KeyCacheEntry* new_entry = malloc(sizeof(KeyCacheEntry));
     if (!new_entry) {
         printf("===MEM ALLOC ERROR===\n");
+        pthread_mutex_unlock(&key_cache_mutex);
         return result;
     }
     strncpy(new_entry->path, path, PATH_MAX - 1);
@@ -164,17 +166,14 @@ Keyinfo get_file_key(const char* path, const unsigned char* header, const char* 
     sloth_kdf(password, header, new_entry->key);
     serpent_set_key(new_entry->key, new_entry->ks);
 
-    memcpy(result.key, new_entry->key, KEY_SIZE_SLOTH);
-    memcpy(result.ks, new_entry->ks, SERPENT_KSSIZE_SLOTH);
-    memcpy(result.nonce, header + 16, NONCE_SIZE_SLOTH);
-
-    // 再次上锁添加到缓存（并检查是否已有其他线程添加）
-    pthread_mutex_lock(&key_cache_mutex);
+    // 在持锁状态下再次检查并插入
     HASH_FIND_STR(key_cache, path, entry);
     if (!entry) {
         HASH_ADD_STR(key_cache, path, new_entry);
+        memcpy(result.key, new_entry->key, KEY_SIZE_SLOTH);
+        memcpy(result.ks, new_entry->ks, SERPENT_KSSIZE_SLOTH);
+        memcpy(result.nonce, header + 16, NONCE_SIZE_SLOTH);
     } else {
-        // 如果其他线程已插入，使用其内容，释放我们创建的 entry
         if (memcmp(entry->salt, header, 16) == 0) {
             memcpy(result.key, entry->key, KEY_SIZE_SLOTH);
             memcpy(result.ks, entry->ks, SERPENT_KSSIZE_SLOTH);
@@ -182,9 +181,11 @@ Keyinfo get_file_key(const char* path, const unsigned char* header, const char* 
         }
         free(new_entry);
     }
+
     pthread_mutex_unlock(&key_cache_mutex);
     return result;
 }
+
 
 FileLock* get_or_create_lock(const char* path) {
     LockEntry* entry;
@@ -447,8 +448,8 @@ static int myfs_unlink(const char* path) {
 	int res = unlink(full_path);
 	if (res == -1) return -errno;
 
-	remove_file_lock(path);       // 移除锁
-	remove_cached_key(path);      // 移除缓存密钥（如有）
+	//remove_file_lock(path);       // 移除锁
+	//remove_cached_key(path);      // 移除缓存密钥（如有）
 	return 0;
 }
 
@@ -461,10 +462,10 @@ static int myfs_rename(const char* from, const char* to) {
 		return -errno;
 
 	// 更新锁映射表
-	rename_file_lock(from, to);
+	//rename_file_lock(from, to);
 
 	// 更新密钥缓存
-	rename_cached_key(from, to);
+	//rename_cached_key(from, to);
 
 	return 0;
 }
