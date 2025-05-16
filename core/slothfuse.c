@@ -60,10 +60,10 @@ typedef struct {
 ///////////////////// 加密相关 ///////////////////////
 
 Keyinfo get_file_key(const char* path, const unsigned char* header, const char* password) {
+    pthread_mutex_lock(&key_cache_mutex);
+	
     KeyCacheEntry* entry;
     Keyinfo result = {0};
-
-    pthread_mutex_lock(&key_cache_mutex);
 
     // 查找缓存
     HASH_FIND_STR(key_cache, path, entry);
@@ -105,9 +105,8 @@ Keyinfo get_file_key(const char* path, const unsigned char* header, const char* 
 
 
 FileLock* get_or_create_lock(const char* path) {
-    LockEntry* entry;
-
     pthread_mutex_lock(&lock_table_mutex);
+	LockEntry* entry;
     HASH_FIND_STR(lock_table, path, entry);
     if (!entry) {
         // 先创建新 entry，避免在锁内长时间运行
