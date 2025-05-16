@@ -166,21 +166,10 @@ Keyinfo get_file_key(const char* path, const unsigned char* header, const char* 
     sloth_kdf(password, header, new_entry->key);
     serpent_set_key(new_entry->key, new_entry->ks);
 
-    // 在持锁状态下再次检查并插入
-    HASH_FIND_STR(key_cache, path, entry);
-    if (!entry) {
-        HASH_ADD_STR(key_cache, path, new_entry);
-        memcpy(result.key, new_entry->key, KEY_SIZE_SLOTH);
-        memcpy(result.ks, new_entry->ks, SERPENT_KSSIZE_SLOTH);
-        memcpy(result.nonce, header + 16, NONCE_SIZE_SLOTH);
-    } else {
-        if (memcmp(entry->salt, header, 16) == 0) {
-            memcpy(result.key, entry->key, KEY_SIZE_SLOTH);
-            memcpy(result.ks, entry->ks, SERPENT_KSSIZE_SLOTH);
-            memcpy(result.nonce, header + 16, NONCE_SIZE_SLOTH);
-        }
-        free(new_entry);
-    }
+    HASH_ADD_STR(key_cache, path, new_entry);
+    memcpy(result.key, new_entry->key, KEY_SIZE_SLOTH);
+    memcpy(result.ks, new_entry->ks, SERPENT_KSSIZE_SLOTH);
+    memcpy(result.nonce, header + 16, NONCE_SIZE_SLOTH);
 
     pthread_mutex_unlock(&key_cache_mutex);
     return result;
