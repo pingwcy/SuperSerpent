@@ -56,83 +56,6 @@ typedef struct {
 	uint8_t ks[SERPENT_KSSIZE_SLOTH];
 	uint8_t nonce[NONCE_SIZE_SLOTH];
 } Keyinfo;
-///
-void remove_file_lock(const char* path) {
-	if (!path) return;
-    pthread_mutex_lock(&lock_table_mutex);
-
-    LockEntry* entry;
-    HASH_FIND_STR(lock_table, path, entry);
-    if (entry) {
-        pthread_rwlock_destroy(&entry->fl.lock);
-        HASH_DEL(lock_table, entry);
-        free(entry);
-    }
-
-    pthread_mutex_unlock(&lock_table_mutex);
-}
-void remove_cached_key(const char* path) {
-	if (!path) return;
-    pthread_mutex_lock(&key_cache_mutex);
-
-    KeyCacheEntry* entry;
-    HASH_FIND_STR(key_cache, path, entry);
-    if (entry) {
-        HASH_DEL(key_cache, entry);
-        free(entry);
-    }
-
-    pthread_mutex_unlock(&key_cache_mutex);
-}
-void rename_file_lock(const char* old_path, const char* new_path) {
-    if (!old_path || !new_path || strlen(new_path) >= PATH_MAX) return;
-
-    pthread_mutex_lock(&lock_table_mutex);
-
-    // 检查是否冲突
-    LockEntry* existing;
-    HASH_FIND_STR(lock_table, new_path, existing);
-    if (existing) {
-        pthread_mutex_unlock(&lock_table_mutex);
-        return; // 已存在新路径，避免冲突
-    }
-
-    LockEntry* entry;
-    HASH_FIND_STR(lock_table, old_path, entry);
-    if (entry) {
-        HASH_DEL(lock_table, entry);
-        strncpy(entry->path, new_path, PATH_MAX - 1);
-        entry->path[PATH_MAX - 1] = '\0';
-        HASH_ADD_STR(lock_table, path, entry);
-    }
-
-    pthread_mutex_unlock(&lock_table_mutex);
-}
-
-void rename_cached_key(const char* old_path, const char* new_path) {
-    if (!old_path || !new_path || strlen(new_path) >= PATH_MAX) return;
-
-    pthread_mutex_lock(&key_cache_mutex);
-
-    // 检查是否已存在新路径，避免覆盖
-    KeyCacheEntry* existing;
-    HASH_FIND_STR(key_cache, new_path, existing);
-    if (existing) {
-        pthread_mutex_unlock(&key_cache_mutex);
-        return;
-    }
-
-    KeyCacheEntry* entry;
-    HASH_FIND_STR(key_cache, old_path, entry);
-    if (entry) {
-        HASH_DEL(key_cache, entry);
-        strncpy(entry->path, new_path, PATH_MAX - 1);
-        entry->path[PATH_MAX - 1] = '\0';
-        HASH_ADD_STR(key_cache, path, entry);
-    }
-
-    pthread_mutex_unlock(&key_cache_mutex);
-}
 
 ///////////////////// 加密相关 ///////////////////////
 
@@ -160,6 +83,11 @@ Keyinfo get_file_key(const char* path, const unsigned char* header, const char* 
         pthread_mutex_unlock(&key_cache_mutex);
         return result;
     }
+	if (entry) {
+        HASH_DEL(key_cache, entry);
+        free(entry);
+    }
+
     strncpy(new_entry->path, path, PATH_MAX - 1);
     new_entry->path[PATH_MAX - 1] = '\0';
     memcpy(new_entry->salt, header, 16);
@@ -203,23 +131,6 @@ FileLock* get_or_create_lock(const char* path) {
     }
     pthread_mutex_unlock(&lock_table_mutex);
     return entry ? &entry->fl : NULL;
-}
-
-// 填充SALT和NONCE
-void initialize_header(FILE* fp) {
-	unsigned char header[HEADER_SIZE];
-	if (secure_random(header, HEADER_SIZE) != 0) {
-		memset(header, 0, HEADER_SIZE);
-		return;
-	}
-	fseek(fp, 0, SEEK_SET);
-	fwrite(header, 1, HEADER_SIZE, fp);
-}
-
-int read_header(FILE* fp, unsigned char* header) {
-	fseek(fp, 0, SEEK_SET);
-	size_t read_bytes = fread(header, 1, HEADER_SIZE, fp);
-	return (read_bytes == HEADER_SIZE) ? 0 : -1;
 }
 //////////////////////////////////////////////////////
 static void get_full_path(char* fullpath, const char* path) {
@@ -800,3 +711,102 @@ int main_fuse_sloth(int argc, char* argv[]) {
 		return fuse_main(new_argc, new_argv, &myfs_oper, NULL);
 	}
 }
+
+
+/*
+// NOTE: We do not free lock_table or key_cache entries on unlink/rename.
+// This avoids use-after-free without reference counting in a lightweight single-user context.
+
+void remove_file_lock(const char* path) {
+	if (!path) return;
+    pthread_mutex_lock(&lock_table_mutex);
+
+    LockEntry* entry;
+    HASH_FIND_STR(lock_table, path, entry);
+    if (entry) {
+        pthread_rwlock_destroy(&entry->fl.lock);
+        HASH_DEL(lock_table, entry);
+        free(entry);
+    }
+
+    pthread_mutex_unlock(&lock_table_mutex);
+}
+void remove_cached_key(const char* path) {
+	if (!path) return;
+    pthread_mutex_lock(&key_cache_mutex);
+
+    KeyCacheEntry* entry;
+    HASH_FIND_STR(key_cache, path, entry);
+    if (entry) {
+        HASH_DEL(key_cache, entry);
+        free(entry);
+    }
+
+    pthread_mutex_unlock(&key_cache_mutex);
+}
+void rename_file_lock(const char* old_path, const char* new_path) {
+    if (!old_path || !new_path || strlen(new_path) >= PATH_MAX) return;
+
+    pthread_mutex_lock(&lock_table_mutex);
+
+    // 检查是否冲突
+    LockEntry* existing;
+    HASH_FIND_STR(lock_table, new_path, existing);
+    if (existing) {
+        pthread_mutex_unlock(&lock_table_mutex);
+        return; // 已存在新路径，避免冲突
+    }
+
+    LockEntry* entry;
+    HASH_FIND_STR(lock_table, old_path, entry);
+    if (entry) {
+        HASH_DEL(lock_table, entry);
+        strncpy(entry->path, new_path, PATH_MAX - 1);
+        entry->path[PATH_MAX - 1] = '\0';
+        HASH_ADD_STR(lock_table, path, entry);
+    }
+
+    pthread_mutex_unlock(&lock_table_mutex);
+}
+
+void rename_cached_key(const char* old_path, const char* new_path) {
+    if (!old_path || !new_path || strlen(new_path) >= PATH_MAX) return;
+
+    pthread_mutex_lock(&key_cache_mutex);
+
+    // 检查是否已存在新路径，避免覆盖
+    KeyCacheEntry* existing;
+    HASH_FIND_STR(key_cache, new_path, existing);
+    if (existing) {
+        pthread_mutex_unlock(&key_cache_mutex);
+        return;
+    }
+
+    KeyCacheEntry* entry;
+    HASH_FIND_STR(key_cache, old_path, entry);
+    if (entry) {
+        HASH_DEL(key_cache, entry);
+        strncpy(entry->path, new_path, PATH_MAX - 1);
+        entry->path[PATH_MAX - 1] = '\0';
+        HASH_ADD_STR(key_cache, path, entry);
+    }
+
+    pthread_mutex_unlock(&key_cache_mutex);
+}
+
+//Unused functions
+void initialize_header(FILE* fp) {
+	unsigned char header[HEADER_SIZE];
+	if (secure_random(header, HEADER_SIZE) != 0) {
+		memset(header, 0, HEADER_SIZE);
+		return;
+	}
+	fseek(fp, 0, SEEK_SET);
+	fwrite(header, 1, HEADER_SIZE, fp);
+}
+int read_header(FILE* fp, unsigned char* header) {
+	fseek(fp, 0, SEEK_SET);
+	size_t read_bytes = fread(header, 1, HEADER_SIZE, fp);
+	return (read_bytes == HEADER_SIZE) ? 0 : -1;
+}
+*/
