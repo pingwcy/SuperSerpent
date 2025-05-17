@@ -13,7 +13,7 @@ on:
       - 'README.md'
 
 jobs:
-  build:
+  build-linux:
     runs-on: ubuntu-latest  
 
     steps:
@@ -30,4 +30,23 @@ jobs:
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: Compile project
+        run: cmake --build build --config Release
+
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Create build directory
+        run: mkdir build
+
+      - name: Run CMake
+        run: cmake -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
         run: cmake --build build --config Release
