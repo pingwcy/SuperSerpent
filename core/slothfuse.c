@@ -703,7 +703,7 @@ int main_fuse_sloth(int argc, char* argv[]) {
 			//continue;
 		}
 		strcpy(mount_point, argv[2]);
-		char* new_argv[] = { argv[0], argv[1], "-f", "-o", "nonempty,allow_other" };
+		char* new_argv[] = { argv[0], argv[1], "-f", "-o", "nonempty,allow_other,exec" };
 		int new_argc = 5;
 
 		srand(time(NULL));
