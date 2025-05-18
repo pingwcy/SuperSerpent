@@ -142,6 +142,13 @@ static int myfs_getattr(const char* path, struct stat* stbuf) {
 	if (strcmp(path, "/") == 0) {
 		stbuf->st_mode = S_IFDIR | 0755;
 		stbuf->st_nlink = 2;
+
+		// 设置目录的默认时间（可选，根据实际需要决定是否加）
+		time_t now = time(NULL);
+		stbuf->st_atime = now;
+		stbuf->st_mtime = now;
+		stbuf->st_ctime = now;
+
 		return 0;
 	}
 
@@ -152,14 +159,14 @@ static int myfs_getattr(const char* path, struct stat* stbuf) {
 	if (stat(full_path, &st) == -1)
 		return -errno;
 
-	if (S_ISDIR(st.st_mode)) {
-		stbuf->st_mode = S_IFDIR | 0755;
-		stbuf->st_nlink = 2;
-	} else {
-		stbuf->st_mode = S_IFREG | 0644;
-		stbuf->st_nlink = 1;
-		stbuf->st_size = (st.st_size >= HEADER_SIZE) ? (st.st_size - HEADER_SIZE) : 0;
+	// 继承底层文件系统的全部信息（推荐做法）
+	*stbuf = st;
+
+	// 如果你使用 HEADER_SIZE 做了偏移（比如加了文件头），调整 st_size 即可
+	if (S_ISREG(st.st_mode)) {
+		//stbuf->st_size = (st.st_size >= HEADER_SIZE) ? (st.st_size - HEADER_SIZE) : 0;
 	}
+
 	return 0;
 }
 
