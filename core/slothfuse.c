@@ -164,7 +164,7 @@ static int myfs_getattr(const char* path, struct stat* stbuf) {
 
 	// 如果你使用 HEADER_SIZE 做了偏移（比如加了文件头），调整 st_size 即可
 	if (S_ISREG(st.st_mode)) {
-		//stbuf->st_size = (st.st_size >= HEADER_SIZE) ? (st.st_size - HEADER_SIZE) : 0;
+		stbuf->st_size = (st.st_size >= HEADER_SIZE) ? (st.st_size - HEADER_SIZE) : 0;
 	}
 
 	return 0;
