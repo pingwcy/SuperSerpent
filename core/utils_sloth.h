@@ -23,7 +23,7 @@ size_t pkcs7_pad_sloth(unsigned char* input, size_t len, unsigned char* output);
 size_t pkcs7_unpad_sloth(unsigned char* data, size_t len);
 void hex_to_uint8_sloth(const char* hex, uint8_t* output, size_t len);
 char* uint8_to_hex_string_sloth(uint8_t* data, size_t len);
-
+double get_time_ms();
 #ifdef __cplusplus
 }
 #endif

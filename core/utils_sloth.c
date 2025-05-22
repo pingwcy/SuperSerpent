@@ -22,7 +22,7 @@ void ct_memcpy_sloth(uint8_t* dst, const uint8_t* src, size_t len) {
 	volatile uint8_t dummy = 0;
 	for (size_t i = 0; i < len; ++i) {
 		dst[i] = src[i];
-		dummy |= dst[i]; // ·ÀÖ¹ÓÅ»¯
+		dummy |= dst[i]; // ï¿½ï¿½Ö¹ï¿½Å»ï¿½
 	}
 	(void)dummy;
 }
@@ -31,22 +31,22 @@ void secure_memzero_sloth(void* ptr, size_t len) {
 if (ptr == NULL || len == 0) return;
 
 #if defined(_WIN32)
-	SecureZeroMemory(ptr, len); // Windows ×¨ÓÃ
+	SecureZeroMemory(ptr, len); // Windows ×¨ï¿½ï¿½
 #else
-	// ÓÅÏÈ³¢ÊÔÆ½Ì¨ÊÇ·ñÏÔÊ½Ìá¹© memset_s
+	// ï¿½ï¿½ï¿½È³ï¿½ï¿½ï¿½Æ½Ì¨ï¿½Ç·ï¿½ï¿½ï¿½Ê½ï¿½á¹© memset_s
 #if defined(__STDC_LIB_EXT1__) && (__STDC_WANT_LIB_EXT1__ == 1)
 	if (memset_s(ptr, len, 0, len) == 0) {
 		return;
 	}
 #endif
 
-	// fallback£ºÊÖ¶¯Ð´Èë + memory barrier ·ÀÖ¹±àÒëÆ÷ÓÅ»¯
+	// fallbackï¿½ï¿½ï¿½Ö¶ï¿½Ð´ï¿½ï¿½ + memory barrier ï¿½ï¿½Ö¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Å»ï¿½
 	volatile unsigned char* p = (volatile unsigned char*)ptr;
 	while (len--) {
 		*p++ = 0;
 	}
 
-	// ·ÀÖ¹±àÒëÆ÷ÓÅ»¯Õû¸öµ÷ÓÃ
+	// ï¿½ï¿½Ö¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Å»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 	__asm__ __volatile__("" : : "r"(ptr) : "memory");
 #endif
 }
@@ -67,24 +67,24 @@ void strtolower(const char* src, char* dest) {
 }
 
 int get_user_input(const char* label, char* buffer, size_t buffer_size) {
-	// ·ÀÓùÐÔ¼ì²é1£ºÑéÖ¤»ù±¾²ÎÊýÓÐÐ§ÐÔ
+	// ï¿½ï¿½ï¿½ï¿½ï¿½Ô¼ï¿½ï¿½1ï¿½ï¿½ï¿½ï¿½Ö¤ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð§ï¿½ï¿½
 	if (buffer == NULL || buffer_size == 0) {
 		fprintf(stderr, "[ERROR] Invalid parameters: buffer=%p, size=%zu\n",
 			(void*)buffer, buffer_size);
-		return EINVAL;  // ·µ»Ø±ê×¼´íÎóÂë
+		return EINVAL;  // ï¿½ï¿½ï¿½Ø±ï¿½×¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 	}
 
-	// ·ÀÓùÐÔ¼ì²é2£ºÈ·±£»º³åÇø¿ÉÐ´
+	// ï¿½ï¿½ï¿½ï¿½ï¿½Ô¼ï¿½ï¿½2ï¿½ï¿½È·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð´
 	buffer[0] = '\0';
 
-	// ·ÀÓùÐÔ¼ì²é3£ºÑéÖ¤±ê×¼ÊäÈëÊÇ·ñ¿ÉÓÃ
+	// ï¿½ï¿½ï¿½ï¿½ï¿½Ô¼ï¿½ï¿½3ï¿½ï¿½ï¿½ï¿½Ö¤ï¿½ï¿½×¼ï¿½ï¿½ï¿½ï¿½ï¿½Ç·ï¿½ï¿½ï¿½ï¿½
 	if (feof(stdin) || ferror(stdin)) {
 		fprintf(stderr, "[ERROR] stdin is in error state or at EOF\n");
-		clearerr(stdin);  // Çå³ý´íÎó×´Ì¬
+		clearerr(stdin);  // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×´Ì¬
 		return EIO;
 	}
 
-	// ÏÔÊ¾ÌáÊ¾ÐÅÏ¢²¢È·±£Êä³ö
+	// ï¿½ï¿½Ê¾ï¿½ï¿½Ê¾ï¿½ï¿½Ï¢ï¿½ï¿½È·ï¿½ï¿½ï¿½ï¿½ï¿½
 	if (label != NULL) {
 		printf("%s", label);
 		if (fflush(stdout) != 0) {
@@ -93,7 +93,7 @@ int get_user_input(const char* label, char* buffer, size_t buffer_size) {
 		}
 	}
 
-	// °²È«¶ÁÈ¡ÊäÈë
+	// ï¿½ï¿½È«ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½
 	if (fgets(buffer, buffer_size, stdin) == NULL) {
 		if (feof(stdin)) {
 			fprintf(stderr, "[WARNING] EOF reached while reading input\n");
@@ -105,35 +105,35 @@ int get_user_input(const char* label, char* buffer, size_t buffer_size) {
 		}
 	}
 
-	// ´¦Àí»»ÐÐ·ûºÍ»º³åÇøÇåÀí
+	// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð·ï¿½ï¿½Í»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 	char* newline = strchr(buffer, '\n');
 	if (newline != NULL) {
 		*newline = '\0';
 	}
 	else {
-		// ÊäÈë³¬¹ý»º³åÇø´óÐ¡µÄÇé¿ö
+		// ï¿½ï¿½ï¿½ë³¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð¡ï¿½ï¿½ï¿½ï¿½ï¿½
 		int c;
 		while ((c = getchar()) != '\n' && c != EOF) {
-			// ÍêÈ«ÏûºÄÊ£ÓàÊäÈë
+			// ï¿½ï¿½È«ï¿½ï¿½ï¿½ï¿½Ê£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 		}
 
-		// È·±£×Ö·û´®ÕýÈ·ÖÕÖ¹
+		// È·ï¿½ï¿½ï¿½Ö·ï¿½ï¿½ï¿½ï¿½ï¿½È·ï¿½ï¿½Ö¹
 		if (buffer_size > 1) {
 			buffer[buffer_size - 1] = '\0';
 		}
 		else {
-			buffer[0] = '\0';  // ´¦Àíbuffer_size=1µÄÌØÊâÇé¿ö
+			buffer[0] = '\0';  // ï¿½ï¿½ï¿½ï¿½buffer_size=1ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 		}
 
 		fprintf(stderr, "[WARNING] Input truncated (max %zu characters)\n",
 			buffer_size - 1);
-		return EOVERFLOW;  // ·µ»ØÒç³ö´íÎóÂë
+		return EOVERFLOW;  // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 	}
 
-	// ·ÀÓùÐÔ¼ì²é4£ºÑéÖ¤½á¹û×Ö·û´®ÓÐÐ§ÐÔ
+	// ï¿½ï¿½ï¿½ï¿½ï¿½Ô¼ï¿½ï¿½4ï¿½ï¿½ï¿½ï¿½Ö¤ï¿½ï¿½ï¿½ï¿½Ö·ï¿½ï¿½ï¿½ï¿½ï¿½Ð§ï¿½ï¿½
 	if (buffer[0] == '\0') {
 		fprintf(stderr, "[WARNING] Empty input received\n");
-		return ENODATA;  // ·µ»ØÎÞÊý¾Ý´íÎóÂë
+		return ENODATA;  // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý´ï¿½ï¿½ï¿½ï¿½ï¿½
 	}
 
 	return 0;
@@ -184,7 +184,7 @@ size_t pkcs7_unpad_sloth(unsigned char* data, size_t len) {
 
 	uint8_t pad_len = data[len - 1];
 
-	// ¼ì²é padding ³¤¶ÈÊÇ·ñºÏ·¨
+	// ï¿½ï¿½ï¿½ padding ï¿½ï¿½ï¿½ï¿½ï¿½Ç·ï¿½Ï·ï¿½
 	if (pad_len == 0 || pad_len > BLOCK_SIZE_SLOTH || pad_len > len) {
 		handle_error_sloth("Padding error: invalid padding length");
 		return len;
@@ -192,7 +192,7 @@ size_t pkcs7_unpad_sloth(unsigned char* data, size_t len) {
 
 	uint8_t bad = 0;
 
-	// ÑéÖ¤Ìî³äÊÇ·ñÒ»ÖÂ
+	// ï¿½ï¿½Ö¤ï¿½ï¿½ï¿½ï¿½Ç·ï¿½Ò»ï¿½ï¿½
 	for (size_t i = 0; i < pad_len; i++) {
 		bad |= data[len - 1 - i] ^ pad_len;
 	}
@@ -227,3 +227,20 @@ char* uint8_to_hex_string_sloth(uint8_t* data, size_t len) {
 	}
 	return hex_string;
 }
+
+#ifdef _WIN32
+#include <windows.h>
+double get_time_ms() {
+    LARGE_INTEGER freq, counter;
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&counter);
+    return (double)counter.QuadPart * 1000.0 / freq.QuadPart;
+}
+#else
+#include <time.h>
+double get_time_ms() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1000.0 + ts.tv_nsec / 1000000.0;
+}
+#endif

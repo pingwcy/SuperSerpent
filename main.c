@@ -5,6 +5,7 @@
 #include "core/logic_sloth.h"
 #include "core/utils_sloth.h"
 #include "core/test_sloth.h"
+#include "core/bench_sloth.h"
 #if defined(_WIN32)
 //#define _CRTDBG_MAP_ALLOC
 //#include <crtdbg.h>
@@ -39,7 +40,10 @@ int main(int argc, char* argv[]) {
 			if (get_user_input("Make selection: ", input, sizeof(input)) != 0) {
 				continue;
 			}
-			if (input[0] == '1') {
+			if (input[0] == '0') {
+				bench_pbkdf2_sloth();
+			}
+			else if (input[0] == '1') {
 				if (enc_sloth(0) == 0) {
 					printf("Success encrypted\n");
 				}
