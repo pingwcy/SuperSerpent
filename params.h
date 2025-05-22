@@ -5,8 +5,8 @@
 #define ITERATIONS_SLOTH 10000 // PBKDF2 Iterations, can be set to higher if needed but remember this value when decrypting
 #define ROUTE_LENGTH_SLOTH 256 //Already set to 256, but can be changed if needed
 #define PWD_MAX_LENGTH_SLOTH 256 //Already large enough, but can be changed if needed
-#define BENCH_ITERATIONS_SLOTH 10 // Benchmark rounds for PBKDF2-HMAC-Whirlpool
-
+#define BENCH_ITERATIONS_SLOTH 10 // Benchmark rounds for PBKDF2-HMAC-Whirlpool and serpent
+#define TEST_BUFFER_SIZE 10 * 1024 *1024 //Buffer Size for benchmark serpent
 
 //NEVER CHANGE THE FOLLOWING VALUES
 #define BLOCK_SIZE_SLOTH 16    // 128-bit (16 bytes) block size for serpent

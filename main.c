@@ -42,6 +42,7 @@ int main(int argc, char* argv[]) {
 			}
 			if (input[0] == '0') {
 				bench_pbkdf2_sloth();
+				benchmark_serpent_sloth();
 			}
 			else if (input[0] == '1') {
 				if (enc_sloth(0) == 0) {
