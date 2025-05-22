@@ -137,6 +137,7 @@ static void get_full_path(char* fullpath, const char* path) {
 }
 
 static int myfs_getattr(const char* path, struct stat* stbuf) {
+	if (!path || !stbuf) return -EFAULT;
 	memset(stbuf, 0, sizeof(struct stat));
 
 	if (strcmp(path, "/") == 0) {

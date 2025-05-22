@@ -111,7 +111,7 @@ int enc_sloth(int mode) {
 		free(data_to_auth);
 
 		// -----------------------------
-		// Êä³öÆ´½Ó£ºsalt + iv + ciphertext + hmac
+		// ï¿½ï¿½ï¿½Æ´ï¿½Ó£ï¿½salt + iv + ciphertext + hmac
 		// -----------------------------
 		size_t total_len = sizeof(salt) + sizeof(iv) + padded_len + sizeof(hmac_output);
 		unsigned char* output = (unsigned char*)malloc(total_len);
@@ -194,7 +194,7 @@ int enc_sloth(int mode) {
 	secure_memzero_sloth(password, sizeof(password));
 	secure_memzero_sloth(plaintext, sizeof(plaintext));
 	secure_memzero_sloth(derived_key, sizeof(derived_key));
-	secure_memzero_sloth(salt, sizeof(salt)); // ¿ÉÑ¡
+	secure_memzero_sloth(salt, sizeof(salt)); // ï¿½ï¿½Ñ¡
 
 	return 0;
 }
@@ -213,7 +213,7 @@ int dec_sloth(int mode) {
 	}
 
 	if (mode == 0) {
-		uint8_t iv[IV_SIZE_SLOTH], master_key[KEY_SIZE_SLOTH + HMAC_WHIRLPOOL_KEY_SIZE_SLOTH], hmac_key[HMAC_WHIRLPOOL_KEY_SIZE_SLOTH], hmac_expected[OUTPUT_SIZE_SLOTH], hmac_actual[OUTPUT_SIZE_SLOTH], ks[SERPENT_KSSIZE_SLOTH];
+		uint8_t iv[IV_SIZE_SLOTH], master_key[KEY_SIZE_SLOTH + HMAC_WHIRLPOOL_KEY_SIZE_SLOTH], hmac_key[HMAC_WHIRLPOOL_KEY_SIZE_SLOTH], hmac_expected[OUTPUT_SIZE_SLOTH], hmac_actual[OUTPUT_SIZE_SLOTH], ks[SERPENT_KSSIZE_SLOTH], decrypted_block[BLOCK_SIZE_SLOTH];
 		size_t total_len = strlen(hex_input) / 2;
 		unsigned char block[BLOCK_SIZE_SLOTH];
 		unsigned char prev_cipher[BLOCK_SIZE_SLOTH];
@@ -223,12 +223,12 @@ int dec_sloth(int mode) {
 			return 1;
 		}
 
-		// ¼ÆËã¸÷²¿·Ö³¤¶È
+		// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö³ï¿½ï¿½ï¿½
 		size_t header_len = sizeof(salt) + sizeof(iv);
 		size_t hmac_len = OUTPUT_SIZE_SLOTH;
 		ciphertext_len = total_len - header_len - hmac_len;
 
-		// ÌáÈ¡Êý¾Ý
+		// ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½
 		hex_to_uint8_sloth(hex_input, salt, sizeof(salt));
 		hex_to_uint8_sloth(hex_input + 2 * sizeof(salt), iv, sizeof(iv));
 
@@ -245,14 +245,14 @@ int dec_sloth(int mode) {
 		print_hex_sloth("IV", iv, sizeof(iv));
 		print_hex_sloth("HMAC(expected)", hmac_expected, sizeof(hmac_expected));
 
-		// ÅÉÉúÃÜÔ¿
+		// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¿
 		PBKDF2_HMAC_Whirlpool((uint8_t*)password, strlen(password), salt, sizeof(salt), ITERATIONS_SLOTH, sizeof(master_key), master_key);
 		memcpy(derived_key, master_key, KEY_SIZE_SLOTH);
 		memcpy(hmac_key, master_key + KEY_SIZE_SLOTH, HMAC_WHIRLPOOL_KEY_SIZE_SLOTH);
 		print_hex_sloth("Key", derived_key, sizeof(derived_key));
 		print_hex_sloth("hmac_key", hmac_key, sizeof(hmac_key));
 
-		// ÑéÖ¤ HMAC
+		// ï¿½ï¿½Ö¤ HMAC
 		size_t auth_data_len = sizeof(salt) + sizeof(iv) + ciphertext_len;
 		uint8_t* auth_data = (uint8_t*)malloc(auth_data_len);
 		memcpy(auth_data, salt, sizeof(salt));
@@ -274,7 +274,7 @@ int dec_sloth(int mode) {
 			return 1;
 		}
 
-		// ½âÃÜ¹ý³Ì£¨CBC£©
+		// ï¿½ï¿½ï¿½Ü¹ï¿½ï¿½Ì£ï¿½CBCï¿½ï¿½
 		serpent_set_key(derived_key, ks);
 
 		unsigned char* decrypted_text = (unsigned char*)malloc(ciphertext_len);
@@ -293,9 +293,9 @@ int dec_sloth(int mode) {
 
 		for (size_t i = 0; i < ciphertext_len; i += BLOCK_SIZE_SLOTH) {
 			memcpy(block, ciphertext + i, BLOCK_SIZE_SLOTH);
-			serpent_decrypt(block, block, ks);
+			serpent_decrypt(block, decrypted_block, ks);
 			for (size_t j = 0; j < BLOCK_SIZE_SLOTH; j++) {
-				decrypted_text[i + j] = block[j] ^ prev_cipher[j];
+				decrypted_text[i + j] = decrypted_block[j] ^ prev_cipher[j];
 			}
 			memcpy(prev_cipher, ciphertext + i, BLOCK_SIZE_SLOTH);
 		}
@@ -459,7 +459,7 @@ int enc_file_sloth(int mode) {
 		fwrite(salt, 1, sizeof(salt), outfile);
 		fwrite(iv, 1, sizeof(iv), outfile);
 
-		uint8_t buffer[BLOCK_SIZE_SLOTH], padded_block[BLOCK_SIZE_SLOTH];
+		uint8_t buffer[BLOCK_SIZE_SLOTH], padded_block[BLOCK_SIZE_SLOTH], cipher_block[BLOCK_SIZE_SLOTH];
 		size_t read_len;
 		uint8_t prev_cipher[BLOCK_SIZE_SLOTH];
 		memcpy(prev_cipher, iv, BLOCK_SIZE_SLOTH);  // Initial IV
@@ -482,23 +482,23 @@ int enc_file_sloth(int mode) {
 				padded_block[i] ^= prev_cipher[i];
 			}
 
-			serpent_encrypt(padded_block, padded_block, ks);
-			memcpy(prev_cipher, padded_block, BLOCK_SIZE_SLOTH);
+			serpent_encrypt(padded_block, cipher_block, ks);
+			memcpy(prev_cipher, cipher_block, BLOCK_SIZE_SLOTH);
 
-			fwrite(padded_block, 1, BLOCK_SIZE_SLOTH, outfile);
-			HMAC_Whirlpool_Update(&hmac_ctx, padded_block, BLOCK_SIZE_SLOTH);
+			fwrite(cipher_block, 1, BLOCK_SIZE_SLOTH, outfile);
+			HMAC_Whirlpool_Update(&hmac_ctx, cipher_block, BLOCK_SIZE_SLOTH);
 		}
 
-		// Èç¹û×îºóÒ»¸ö¿é¸ÕºÃÊÇÍêÕû¿é£¬¶îÍâÐ´ÈëÒ»¿é full padding
+		// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½ï¿½Õºï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½é£¬ï¿½ï¿½ï¿½ï¿½Ð´ï¿½ï¿½Ò»ï¿½ï¿½ full padding
 		if (last_block_full == 1) {
 			memset(buffer, BLOCK_SIZE_SLOTH, BLOCK_SIZE_SLOTH);  // Fill with padding value
 			for (size_t i = 0; i < BLOCK_SIZE_SLOTH; i++) {
 				buffer[i] ^= prev_cipher[i];
 			}
 
-			serpent_encrypt(buffer, padded_block, ks);
-			fwrite(padded_block, 1, BLOCK_SIZE_SLOTH, outfile);
-			HMAC_Whirlpool_Update(&hmac_ctx, padded_block, BLOCK_SIZE_SLOTH);
+			serpent_encrypt(buffer, cipher_block, ks);
+			fwrite(cipher_block, 1, BLOCK_SIZE_SLOTH, outfile);
+			HMAC_Whirlpool_Update(&hmac_ctx, cipher_block, BLOCK_SIZE_SLOTH);
 		}
 		HMAC_Whirlpool_Final(&hmac_ctx, hmac_output);
 		fwrite(hmac_output, 1, OUTPUT_SIZE_SLOTH, outfile);
@@ -609,7 +609,7 @@ int dec_file_sloth(int mode) {
 		uint8_t iv[IV_SIZE_SLOTH], tag[OUTPUT_SIZE_SLOTH], hmac_output[OUTPUT_SIZE_SLOTH];
 		uint8_t master_key[KEY_SIZE_SLOTH + HMAC_WHIRLPOOL_KEY_SIZE_SLOTH], hmac_key[HMAC_WHIRLPOOL_KEY_SIZE_SLOTH], ks[SERPENT_KSSIZE_SLOTH];
 
-		// »ñÈ¡ÎÄ¼þ×Ü³¤
+		// ï¿½ï¿½È¡ï¿½Ä¼ï¿½ï¿½Ü³ï¿½
 		fseek(infile, 0, SEEK_END);
 		size_t file_size = ftell(infile);
 		fseek(infile, 0, SEEK_SET);
@@ -641,12 +641,12 @@ int dec_file_sloth(int mode) {
 		HMAC_Whirlpool_Update(&hmac_ctx, salt, SALT_SIZE_SLOTH);
 		HMAC_Whirlpool_Update(&hmac_ctx, iv, IV_SIZE_SLOTH);
 
-		// ³õÊ¼»¯ CBC
+		// ï¿½ï¿½Ê¼ï¿½ï¿½ CBC
 		serpent_set_key(derived_key, ks);
 		uint8_t prev_block[BLOCK_SIZE_SLOTH];
 		memcpy(prev_block, iv, BLOCK_SIZE_SLOTH);
 
-		// ½âÃÜºÍÐ£Ñé
+		// ï¿½ï¿½ï¿½Üºï¿½Ð£ï¿½ï¿½
 		uint8_t block[BLOCK_SIZE_SLOTH], decrypted[BLOCK_SIZE_SLOTH];
 		size_t total_read = 0;
 		size_t write_len;
@@ -662,7 +662,7 @@ int dec_file_sloth(int mode) {
 
 			memcpy(prev_block, block, BLOCK_SIZE_SLOTH);
 
-			// ×îºóÒ»¿éÊ±Ö´ÐÐ unpad
+			// ï¿½ï¿½ï¿½Ò»ï¿½ï¿½Ê±Ö´ï¿½ï¿½ unpad
 			total_read += BLOCK_SIZE_SLOTH;
 			if (total_read == ciphertext_size) {
 				write_len = pkcs7_unpad_sloth(decrypted, BLOCK_SIZE_SLOTH);
@@ -673,7 +673,7 @@ int dec_file_sloth(int mode) {
 			fwrite(decrypted, 1, write_len, outfile);
 		}
 
-		// ×îºó¶Á HMAC
+		// ï¿½ï¿½ï¿½ï¿½ HMAC
 		fread(tag, 1, OUTPUT_SIZE_SLOTH, infile);
 		HMAC_Whirlpool_Final(&hmac_ctx, hmac_output);
 
@@ -725,8 +725,8 @@ int dec_file_sloth(int mode) {
 			}
 			fwrite(ciphertext, 1, ciphertext_len, outfile);
 		}
-		secure_memzero_sloth(nonce, NONCE_SIZE_SLOTH); // ²Á³ýnonce
-		secure_memzero_sloth(tag, TAG_SIZE_SLOTH); // ²Á³ýtag
+		secure_memzero_sloth(nonce, NONCE_SIZE_SLOTH); // ï¿½ï¿½ï¿½ï¿½nonce
+		secure_memzero_sloth(tag, TAG_SIZE_SLOTH); // ï¿½ï¿½ï¿½ï¿½tag
 		if (ciphertext) {
 			secure_memzero_sloth(ciphertext, GCM_BLOCK_SIZE_SLOTH);
 			free(ciphertext);
