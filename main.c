@@ -4,6 +4,7 @@
 #include "params.h"
 #include "core/logic_sloth.h"
 #include "core/utils_sloth.h"
+#include "core/test_sloth.h"
 #if defined(_WIN32)
 //#define _CRTDBG_MAP_ALLOC
 //#include <crtdbg.h>
@@ -14,6 +15,10 @@ int VERBOSE_SLOTH = 0;
 
 int main(int argc, char* argv[]) {
 	//_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF); // 启用内存泄漏检测
+	if (test_sloth() != 0){
+		handle_error_sloth("SELF TEST ERROR!");
+		return -1;
+	}
 	if (argc < 3) {
 		for (int i = 1; i < argc; i++) {
 			char lowerArg[256];
