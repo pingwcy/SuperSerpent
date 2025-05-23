@@ -10,21 +10,21 @@ void print_hash(const unsigned char *hash, size_t length) {
 }
 
 int main() {
-    // 测试输入数据
+    // Test Data
     const char *test_string = "Hello, Whirlpool!";
     unsigned char hash_output[64];
     WHIRLPOOL_CTX ctx;
 
-    // 初始化 Whirlpool 上下文
+    // Initial Whirlpool CTX
     WHIRLPOOL_init(&ctx);
     
-    // 处理输入数据
+    // Input Process
     WHIRLPOOL_add((const unsigned char *)test_string, strlen(test_string), &ctx);
     
-    // 计算最终哈希值
+    // Compute value
     WHIRLPOOL_finalize(&ctx, hash_output);
     
-    // 打印哈希值
+    // Print Hash
     printf("Whirlpool Hash of '%s':\n", test_string);
     print_hash(hash_output, sizeof(hash_output));
 

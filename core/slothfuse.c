@@ -23,14 +23,14 @@
 #include "crypto_mode_sloth.h"
 #include "../uthash.h"
 
-static char user_password[256]; // 全局密码缓存
+static char user_password[256]; // Global Password Cache
 static char mount_point[PATH_MAX];
 
 typedef struct {
-    char path[PATH_MAX];                     // 文件路径
-    unsigned char salt[16];                  // 盐
-    unsigned char key[KEY_SIZE_SLOTH];       // 加密密钥
-    uint8_t ks[SERPENT_KSSIZE_SLOTH];        // 密钥调度结果
+    char path[PATH_MAX];                     // Route of File
+    unsigned char salt[16];                  // Salt for the File
+    unsigned char key[KEY_SIZE_SLOTH];       // Encryption Key
+    uint8_t ks[SERPENT_KSSIZE_SLOTH];        // Corresponding KS
     UT_hash_handle hh;
 } KeyCacheEntry;
 
@@ -57,7 +57,7 @@ typedef struct {
 	uint8_t nonce[NONCE_SIZE_SLOTH];
 } Keyinfo;
 
-///////////////////// 加密相关 ///////////////////////
+///////////////////// Encryption Related ///////////////////////
 
 Keyinfo get_file_key(const char* path, const unsigned char* header, const char* password) {
     pthread_mutex_lock(&key_cache_mutex);
@@ -65,10 +65,10 @@ Keyinfo get_file_key(const char* path, const unsigned char* header, const char* 
     KeyCacheEntry* entry;
     Keyinfo result = {0};
 
-    // 查找缓存
+    // Search Cache
     HASH_FIND_STR(key_cache, path, entry);
     if (entry && memcmp(entry->salt, header, 16) == 0) {
-        // 缓存命中，直接返回
+        // Found in Cache
         memcpy(result.key, entry->key, KEY_SIZE_SLOTH);
         memcpy(result.ks, entry->ks, SERPENT_KSSIZE_SLOTH);
         memcpy(result.nonce, header + 16, NONCE_SIZE_SLOTH);
@@ -76,7 +76,7 @@ Keyinfo get_file_key(const char* path, const unsigned char* header, const char* 
         return result;
     }
 
-    // 构造新 entry
+    // Make new entry
     KeyCacheEntry* new_entry = malloc(sizeof(KeyCacheEntry));
     if (!new_entry) {
         printf("===MEM ALLOC ERROR===\n");
@@ -109,20 +109,20 @@ FileLock* get_or_create_lock(const char* path) {
 	LockEntry* entry;
     HASH_FIND_STR(lock_table, path, entry);
     if (!entry) {
-        // 先创建新 entry，避免在锁内长时间运行
+        // Make new entry
         LockEntry* new_entry = malloc(sizeof(LockEntry));
         if (new_entry) {
             strncpy(new_entry->path, path, PATH_MAX - 1);
             new_entry->path[PATH_MAX - 1] = '\0';
             pthread_rwlock_init(&new_entry->fl.lock, NULL);
 
-            // 再次检查哈希表中是否已插入（另一个线程可能已完成）
+            // Double Check Avoid another thread inserted
             HASH_FIND_STR(lock_table, path, entry);
             if (!entry) {
                 HASH_ADD_STR(lock_table, path, new_entry);
                 entry = new_entry;
             } else {
-                // 已存在，释放我们刚创建的 entry
+                // If existed, release this entry
                 pthread_rwlock_destroy(&new_entry->fl.lock);
                 free(new_entry);
             }
@@ -144,7 +144,7 @@ static int myfs_getattr(const char* path, struct stat* stbuf) {
 		stbuf->st_mode = S_IFDIR | 0755;
 		stbuf->st_nlink = 2;
 
-		// 设置目录的默认时间（可选，根据实际需要决定是否加）
+		// Set Default time for Dir
 		time_t now = time(NULL);
 		stbuf->st_atime = now;
 		stbuf->st_mtime = now;
@@ -160,10 +160,10 @@ static int myfs_getattr(const char* path, struct stat* stbuf) {
 	if (stat(full_path, &st) == -1)
 		return -errno;
 
-	// 继承底层文件系统的全部信息（推荐做法）
+	// Get all info from orgin source
 	*stbuf = st;
 
-	// 如果你使用 HEADER_SIZE 做了偏移（比如加了文件头），调整 st_size 即可
+	// Adjust st_size to return correct file size
 	if (S_ISREG(st.st_mode)) {
 		stbuf->st_size = (st.st_size >= HEADER_SIZE) ? (st.st_size - HEADER_SIZE) : 0;
 	}
@@ -180,7 +180,7 @@ static int myfs_open(const char* path, struct fuse_file_info* fi) {
 	if (fd == -1)
 		return -errno;
 
-	fi->fh = fd; // 将文件描述符保存在 fi->fh 中
+	fi->fh = fd; // Save file description fi->fh
 	return 0;
 }
 
@@ -300,7 +300,7 @@ static int myfs_create(const char* path, mode_t mode, struct fuse_file_info* fi)
 
 	fi->fh = fd;
 
-	get_or_create_lock(path);  // 初始化该文件的锁
+	get_or_create_lock(path);  // Initial the lock for the file
 	return 0;
 }
 
@@ -314,7 +314,7 @@ static int myfs_truncate(const char* path, off_t size) {
 	if (!file_lock) return -EIO;
 	pthread_rwlock_wrlock(&file_lock->lock);
 
-	// 临界区
+	// truncate
 	int res = truncate(full_path, size + HEADER_SIZE);
 
 	pthread_rwlock_unlock(&file_lock->lock);
@@ -339,7 +339,7 @@ static int myfs_readdir(const char* path, void* buf, fuse_fill_dir_t filler, off
 	filler(buf, "..", NULL, 0);
 
 	while ((de = readdir(dp)) != NULL) {
-		// 忽略隐藏的元数据（如 .DS_Store）
+		// Ignore hidden files（e.g. .DS_Store）
 		if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0)
 			continue;
 		filler(buf, de->d_name, NULL, 0);
@@ -355,8 +355,8 @@ static int myfs_unlink(const char* path) {
 	int res = unlink(full_path);
 	if (res == -1) return -errno;
 
-	//remove_file_lock(path);       // 移除锁
-	//remove_cached_key(path);      // 移除缓存密钥（如有）
+	//remove_file_lock(path);       // Remove Lock
+	//remove_cached_key(path);      // Remove Cached Key
 	return 0;
 }
 
@@ -368,10 +368,10 @@ static int myfs_rename(const char* from, const char* to) {
 	if (rename(full_from, full_to) != 0)
 		return -errno;
 
-	// 更新锁映射表
+	// Update Lock Table
 	//rename_file_lock(from, to);
 
-	// 更新密钥缓存
+	// Update Cached Key
 	//rename_cached_key(from, to);
 
 	return 0;
@@ -382,7 +382,7 @@ static int myfs_release(const char* path, struct fuse_file_info* fi) {
 	if (fd >= 0) fsync(fd);
 	if (fd >= 0) close(fd);
 
-	// 清理临时文件（如 LibreOffice 临时文件）
+	// Remove temp files
 	if (strstr(path, "~") || strstr(path, "#") || strstr(path, "lock")) {
 		char full_path[PATH_MAX];
 		get_full_path(full_path, path);
@@ -392,7 +392,7 @@ static int myfs_release(const char* path, struct fuse_file_info* fi) {
 }
 
 static int myfs_flush(const char* path, struct fuse_file_info* fi) {
-	// 对于简单实现，这里通常什么都不做，只要返回0即可
+	// Currently nothing need done here
 	return 0;
 }
 
@@ -756,12 +756,12 @@ void rename_file_lock(const char* old_path, const char* new_path) {
 
     pthread_mutex_lock(&lock_table_mutex);
 
-    // 检查是否冲突
+    // Check Conflict
     LockEntry* existing;
     HASH_FIND_STR(lock_table, new_path, existing);
     if (existing) {
         pthread_mutex_unlock(&lock_table_mutex);
-        return; // 已存在新路径，避免冲突
+        return; // If route existed
     }
 
     LockEntry* entry;
@@ -781,7 +781,7 @@ void rename_cached_key(const char* old_path, const char* new_path) {
 
     pthread_mutex_lock(&key_cache_mutex);
 
-    // 检查是否已存在新路径，避免覆盖
+    // Avoding over-writting
     KeyCacheEntry* existing;
     HASH_FIND_STR(key_cache, new_path, existing);
     if (existing) {

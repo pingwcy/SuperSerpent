@@ -25,7 +25,7 @@
 #include <sys/auxv.h>
 #endif
 
-// 获取随机字节（主要熵源）
+// Get Random Bytes (Main Entroy Source)
 static int get_random_bytes(void *buf, size_t len) {
 #ifdef _WIN32
     HCRYPTPROV hProvider = 0;
@@ -52,7 +52,7 @@ int secure_random(void* buf, size_t len) {
     unsigned char entropy_pool[ENTROPY_POOL_SIZE_SLOTH];
     unsigned char hmac_key[HMAC_WHIRLPOOL_KEY_SIZE_SLOTH];
 
-    // 收集系统熵：HMAC key + 输入缓冲区
+    // Collect Entroy fro System: HMAC key + Buffer
     if (get_random_bytes(hmac_key, HMAC_WHIRLPOOL_KEY_SIZE_SLOTH) != 0) return -1;
     if (get_random_bytes(entropy_pool, ENTROPY_POOL_SIZE_SLOTH) != 0) return -1;
 
@@ -62,7 +62,7 @@ int secure_random(void* buf, size_t len) {
     unsigned char round_output[OUTPUT_SIZE_SLOTH];
 
     while (generated < len) {
-        // 构造输入：entropy_pool || counter
+        // Make: entropy_pool || counter
         memcpy(round_input, entropy_pool, ENTROPY_POOL_SIZE_SLOTH);
         memcpy(round_input + ENTROPY_POOL_SIZE_SLOTH, &counter, sizeof(counter));
 
@@ -76,7 +76,7 @@ int secure_random(void* buf, size_t len) {
         counter++;
     }
 
-    // 安全清除敏感数据
+    // Zero Memmory
     secure_memzero_sloth(entropy_pool, sizeof(entropy_pool));
     secure_memzero_sloth(hmac_key, sizeof(hmac_key));
     secure_memzero_sloth(round_input, sizeof(round_input));
@@ -86,27 +86,28 @@ int secure_random(void* buf, size_t len) {
 }
 
 /*
-// 增加时间熵
+Following functions are abandaned.
+// Add time entropy
 static void mix_time_entropy(unsigned char *buf, size_t len) {
     uint64_t t = 0;
 
-#ifdef _WIN32  // Windows 平台
+#ifdef _WIN32  // Windows 
     LARGE_INTEGER counter;
-    QueryPerformanceCounter(&counter);  // 获取高精度计时器的当前值
-    t = counter.QuadPart;               // 使用计时器的当前值
-#else  // 类 Unix 系统（Linux, macOS 等）
+    QueryPerformanceCounter(&counter);  // Accirate time
+    t = counter.QuadPart;               // Current time
+#else  // Unix (Linux, macOS)
     struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);  // 获取单调时钟的时间
-    t = ts.tv_sec ^ ts.tv_nsec;           // 计算时间戳
+    clock_gettime(CLOCK_MONOTONIC, &ts);  // Get clock
+    t = ts.tv_sec ^ ts.tv_nsec;           // Calc time stamp
 #endif
 
-    // 混合时间戳到缓冲区
+    // Mix time to buffer
     for (size_t i = 0; i < len; i++) {
         buf[i] ^= (t >> (i % sizeof(t))) & 0xFF;
     }
 }
 
-// 增加 CPU 时间戳熵
+// Add CPU Time Entropy
 static void mix_cpu_entropy(unsigned char *buf, size_t len) {
 #if defined(__x86_64__) || defined(__i386__)
     uint64_t tsc = __rdtsc();
@@ -120,32 +121,32 @@ static void mix_cpu_entropy(unsigned char *buf, size_t len) {
     }
 }
 
-// 增加进程 ID 和线程 ID 熵
+// Add process ID and thread ID entropy
 static void mix_pid_entropy(unsigned char *buf, size_t len) {
-    #ifdef _WIN32  // Windows 平台
-        DWORD pid = GetCurrentProcessId();  // 获取进程 ID
-        DWORD tid = GetCurrentThreadId();   // 获取线程 ID
-    #else  // 类 Unix 系统（Linux, macOS 等）
-        pid_t pid = getpid();  // 获取进程 ID
-        pid_t tid = 0;  // 默认初始化为 0
+    #ifdef _WIN32  // Windows
+        DWORD pid = GetCurrentProcessId();  // Get process ID
+        DWORD tid = GetCurrentThreadId();   // Get thread ID
+    #else  // Unix (Linux, macOS)
+        pid_t pid = getpid();  // Get process ID
+        pid_t tid = 0;  // Initial to 0
 
         #ifdef __linux__
-        tid = syscall(SYS_gettid);  // Linux 使用 syscall 获取线程 ID
+        tid = syscall(SYS_gettid);  // Linux use syscall to get thread ID
         #elif defined(__FreeBSD__)
-        tid = (pid_t)thr_self();  // FreeBSD 使用 thr_self 获取线程 ID
+        tid = (pid_t)thr_self();  // FreeBSD use thr_self to get thread ID
         #elif defined(__APPLE__)
-        tid = (pid_t)pthread_self();  // macOS 使用 pthread_self 获取线程 ID
+        tid = (pid_t)pthread_self();  // macOS use pthread_self to get thread ID
         #endif
     #endif
     
-    uint64_t id_mix = (uint64_t)pid ^ (uint64_t)tid;  // 混合进程 ID 和线程 ID
+    uint64_t id_mix = (uint64_t)pid ^ (uint64_t)tid;  // Mix process ID and thread ID
     
     for (size_t i = 0; i < len; i++) {
-        buf[i] ^= (id_mix >> (i % sizeof(id_mix))) & 0xFF;  // 混合 ID 到缓冲区
+        buf[i] ^= (id_mix >> (i % sizeof(id_mix))) & 0xFF;  // Mix ID to buffer
     }
 }
 
-// 组合多种熵源
+// Mix multi entropy
 static void enhance_entropy(unsigned char *buf, size_t len) {
     mix_time_entropy(buf, len);
     mix_cpu_entropy(buf, len);

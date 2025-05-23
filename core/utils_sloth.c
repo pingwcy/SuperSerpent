@@ -22,7 +22,7 @@ void ct_memcpy_sloth(uint8_t* dst, const uint8_t* src, size_t len) {
 	volatile uint8_t dummy = 0;
 	for (size_t i = 0; i < len; ++i) {
 		dst[i] = src[i];
-		dummy |= dst[i]; // ��ֹ�Ż�
+		dummy |= dst[i]; // Dummy
 	}
 	(void)dummy;
 }
@@ -31,22 +31,22 @@ void secure_memzero_sloth(void* ptr, size_t len) {
 if (ptr == NULL || len == 0) return;
 
 #if defined(_WIN32)
-	SecureZeroMemory(ptr, len); // Windows ר��
+	SecureZeroMemory(ptr, len); // For Windows
 #else
-	// ���ȳ���ƽ̨�Ƿ���ʽ�ṩ memset_s
+	// Check if memset_s avaiable
 #if defined(__STDC_LIB_EXT1__) && (__STDC_WANT_LIB_EXT1__ == 1)
 	if (memset_s(ptr, len, 0, len) == 0) {
 		return;
 	}
 #endif
 
-	// fallback���ֶ�д�� + memory barrier ��ֹ�������Ż�
+	// fallback solution + memory barrier to avoid optimizition
 	volatile unsigned char* p = (volatile unsigned char*)ptr;
 	while (len--) {
 		*p++ = 0;
 	}
 
-	// ��ֹ�������Ż���������
+	// Memory Barrier
 	__asm__ __volatile__("" : : "r"(ptr) : "memory");
 #endif
 }
@@ -67,24 +67,24 @@ void strtolower(const char* src, char* dest) {
 }
 
 int get_user_input(const char* label, char* buffer, size_t buffer_size) {
-	// �����Լ��1����֤����������Ч��
+	// Safely get user input
 	if (buffer == NULL || buffer_size == 0) {
 		fprintf(stderr, "[ERROR] Invalid parameters: buffer=%p, size=%zu\n",
 			(void*)buffer, buffer_size);
-		return EINVAL;  // ���ر�׼������
+		return EINVAL;  // Parameters invalid
 	}
 
-	// �����Լ��2��ȷ����������д
+	// End with 0
 	buffer[0] = '\0';
 
-	// �����Լ��3����֤��׼�����Ƿ����
+	// Check stdin and eof
 	if (feof(stdin) || ferror(stdin)) {
 		fprintf(stderr, "[ERROR] stdin is in error state or at EOF\n");
-		clearerr(stdin);  // �������״̬
+		clearerr(stdin);  // Clear error
 		return EIO;
 	}
 
-	// ��ʾ��ʾ��Ϣ��ȷ�����
+	// Flush stdout
 	if (label != NULL) {
 		printf("%s", label);
 		if (fflush(stdout) != 0) {
@@ -93,7 +93,7 @@ int get_user_input(const char* label, char* buffer, size_t buffer_size) {
 		}
 	}
 
-	// ��ȫ��ȡ����
+	// Get user input
 	if (fgets(buffer, buffer_size, stdin) == NULL) {
 		if (feof(stdin)) {
 			fprintf(stderr, "[WARNING] EOF reached while reading input\n");
@@ -105,35 +105,35 @@ int get_user_input(const char* label, char* buffer, size_t buffer_size) {
 		}
 	}
 
-	// �������з��ͻ���������
+	// newline
 	char* newline = strchr(buffer, '\n');
 	if (newline != NULL) {
 		*newline = '\0';
 	}
 	else {
-		// ���볬����������С�����
+		// Check length
 		int c;
 		while ((c = getchar()) != '\n' && c != EOF) {
-			// ��ȫ����ʣ������
+			// Using up of input
 		}
 
-		// ȷ���ַ�����ȷ��ֹ
+		// Check byffer length
 		if (buffer_size > 1) {
 			buffer[buffer_size - 1] = '\0';
 		}
 		else {
-			buffer[0] = '\0';  // ����buffer_size=1���������
+			buffer[0] = '\0';  // buffer_size=1 is the least
 		}
 
 		fprintf(stderr, "[WARNING] Input truncated (max %zu characters)\n",
 			buffer_size - 1);
-		return EOVERFLOW;  // �������������
+		return EOVERFLOW;  // Too long
 	}
 
-	// �����Լ��4����֤����ַ�����Ч��
+	// Check if No Input
 	if (buffer[0] == '\0') {
 		fprintf(stderr, "[WARNING] Empty input received\n");
-		return ENODATA;  // ���������ݴ�����
+		return ENODATA;  // No input
 	}
 
 	return 0;
@@ -184,7 +184,7 @@ size_t pkcs7_unpad_sloth(unsigned char* data, size_t len) {
 
 	uint8_t pad_len = data[len - 1];
 
-	// ��� padding �����Ƿ�Ϸ�
+	// Check padding length
 	if (pad_len == 0 || pad_len > BLOCK_SIZE_SLOTH || pad_len > len) {
 		handle_error_sloth("Padding error: invalid padding length");
 		return len;
@@ -192,7 +192,7 @@ size_t pkcs7_unpad_sloth(unsigned char* data, size_t len) {
 
 	uint8_t bad = 0;
 
-	// ��֤����Ƿ�һ��
+	// Check padding format
 	for (size_t i = 0; i < pad_len; i++) {
 		bad |= data[len - 1 - i] ^ pad_len;
 	}

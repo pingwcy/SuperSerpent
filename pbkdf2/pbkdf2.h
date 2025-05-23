@@ -22,26 +22,26 @@ extern "C" {
 #endif
 
 /**
- * @brief 计算 HMAC-Whirlpool 值。
- * @param key 密钥
- * @param key_len 密钥长度（字节）
- * @param message 输入消息
- * @param message_len 消息长度（字节）
- * @param output 输出 HMAC 结果（必须至少为 64 字节）
+ * @brief Compute HMAC-Whirlpool Value
+ * @param key The Key
+ * @param key_len Bytes Length of Key
+ * @param message Input Message
+ * @param message_len Bytes Length of Message
+ * @param output Output HMAC Result (Must be At Least 64 Bytes)
  */
 void HMAC_Whirlpool(const uint8_t *key, size_t key_len, 
                     const uint8_t *message, size_t message_len, 
                     uint8_t *output);
 
 /**
- * @brief 计算 PBKDF2-HMAC-Whirlpool 派生密钥。
- * @param password 输入密码
- * @param password_len 密码长度（字节）
- * @param salt 输入盐值
- * @param salt_len 盐值长度（字节）
- * @param iterations 迭代次数
- * @param key_len 需要派生的密钥长度（字节）
- * @param output 生成的密钥（调用者需要分配足够的空间）
+ * @brief Computer PBKDF2-HMAC-Whirlpool Derieved Key
+ * @param password Input Password
+ * @param password_len Bytes Length of Password
+ * @param salt Input Salt
+ * @param salt_len Bytes Length of Salt
+ * @param iterations Iterations Counts
+ * @param key_len Needed Bytes Length of Target Key
+ * @param output Output Key (Need Caller Provides Enought Length)
  */
 void PBKDF2_HMAC_Whirlpool(const uint8_t *password, int password_len, 
                            const uint8_t *salt, int salt_len, 

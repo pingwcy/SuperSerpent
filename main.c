@@ -15,7 +15,7 @@
 int VERBOSE_SLOTH = 0;
 
 int main(int argc, char* argv[]) {
-	//_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF); // 启用内存泄漏检测
+	//_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF); // Enable Memory Leak Detection for Windows
 	if (test_sloth() != 0){
 		handle_error_sloth("SELF TEST ERROR!");
 		return -1;
@@ -36,7 +36,7 @@ int main(int argc, char* argv[]) {
 			fflush(stdout);
 			printf("Select function: \n1.CBC Encryption    2.CBC Decryption    3.CBC Encrypt File    4.CBC Decrypt File\n5.GCM Encryption    6.GCM Decryption    7.GCM Encrypt File    8.GCM Decrypt File\n");
 			fflush(stdout);
-			char input[10];  // 用于存储用户输入
+			char input[10];  // Selection
 			if (get_user_input("Make selection: ", input, sizeof(input)) != 0) {
 				continue;
 			}

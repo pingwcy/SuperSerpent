@@ -39,7 +39,7 @@ void bench_pbkdf2_sloth() {
 }
 
 int benchmark_serpent_sloth() {
-    // 准备密钥和密钥调度表
+    // Prepare Key and ks
     const uint8_t key[KEY_SIZE_SLOTH] = {
         0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
         0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
@@ -49,7 +49,7 @@ int benchmark_serpent_sloth() {
     uint8_t ks[SERPENT_KSSIZE_SLOTH];
     serpent_set_key(key, ks);
 
-    // 分配缓冲区
+    // Malloc Buffer
     uint8_t *input = (uint8_t *)malloc(TEST_BUFFER_SIZE);
     uint8_t *output = (uint8_t *)malloc(TEST_BUFFER_SIZE);
     if (!input || !output) {
@@ -57,14 +57,14 @@ int benchmark_serpent_sloth() {
         return -1;
     }
 
-    // 用随机数据填充输入缓冲区
+    // Fill Buffer with Rand Bytes
     for (size_t i = 0; i < TEST_BUFFER_SIZE; ++i) {
         input[i] = (uint8_t)(rand() % 256);
     }
 
     size_t blocks = TEST_BUFFER_SIZE / BLOCK_SIZE_SLOTH;
 
-    // 加密 benchmark
+    // Encryption Benchmark
     double t_enc_start = get_time_ms();
     for (int r = 0; r < BENCH_ITERATIONS_SLOTH; ++r) {
         for (size_t i = 0; i < blocks; ++i) {
@@ -73,7 +73,7 @@ int benchmark_serpent_sloth() {
     }
     double t_enc_end = get_time_ms();
 
-    // 解密 benchmark
+    // Decryption benchmark
     double t_dec_start = get_time_ms();
     for (int r = 0; r < BENCH_ITERATIONS_SLOTH; ++r) {
         for (size_t i = 0; i < blocks; ++i) {

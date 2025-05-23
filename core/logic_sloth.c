@@ -111,7 +111,7 @@ int enc_sloth(int mode) {
 		free(data_to_auth);
 
 		// -----------------------------
-		// ���ƴ�ӣ�salt + iv + ciphertext + hmac
+		// Link: salt + iv + ciphertext + hmac
 		// -----------------------------
 		size_t total_len = sizeof(salt) + sizeof(iv) + padded_len + sizeof(hmac_output);
 		unsigned char* output = (unsigned char*)malloc(total_len);
@@ -194,7 +194,7 @@ int enc_sloth(int mode) {
 	secure_memzero_sloth(password, sizeof(password));
 	secure_memzero_sloth(plaintext, sizeof(plaintext));
 	secure_memzero_sloth(derived_key, sizeof(derived_key));
-	secure_memzero_sloth(salt, sizeof(salt)); // ��ѡ
+	secure_memzero_sloth(salt, sizeof(salt)); // Zero Memory
 
 	return 0;
 }
@@ -223,12 +223,12 @@ int dec_sloth(int mode) {
 			return 1;
 		}
 
-		// ��������ֳ���
+		// Get Message Length
 		size_t header_len = sizeof(salt) + sizeof(iv);
 		size_t hmac_len = OUTPUT_SIZE_SLOTH;
 		ciphertext_len = total_len - header_len - hmac_len;
 
-		// ��ȡ����
+		// Hex to Uint8
 		hex_to_uint8_sloth(hex_input, salt, sizeof(salt));
 		hex_to_uint8_sloth(hex_input + 2 * sizeof(salt), iv, sizeof(iv));
 
@@ -245,14 +245,14 @@ int dec_sloth(int mode) {
 		print_hex_sloth("IV", iv, sizeof(iv));
 		print_hex_sloth("HMAC(expected)", hmac_expected, sizeof(hmac_expected));
 
-		// ������Կ
+		// Get two Keys
 		PBKDF2_HMAC_Whirlpool((uint8_t*)password, strlen(password), salt, sizeof(salt), ITERATIONS_SLOTH, sizeof(master_key), master_key);
 		memcpy(derived_key, master_key, KEY_SIZE_SLOTH);
 		memcpy(hmac_key, master_key + KEY_SIZE_SLOTH, HMAC_WHIRLPOOL_KEY_SIZE_SLOTH);
 		print_hex_sloth("Key", derived_key, sizeof(derived_key));
 		print_hex_sloth("hmac_key", hmac_key, sizeof(hmac_key));
 
-		// ��֤ HMAC
+		// Compute HMAC
 		size_t auth_data_len = sizeof(salt) + sizeof(iv) + ciphertext_len;
 		uint8_t* auth_data = (uint8_t*)malloc(auth_data_len);
 		memcpy(auth_data, salt, sizeof(salt));
@@ -274,7 +274,7 @@ int dec_sloth(int mode) {
 			return 1;
 		}
 
-		// ���ܹ��̣�CBC��
+		// Key Schdule
 		serpent_set_key(derived_key, ks);
 
 		unsigned char* decrypted_text = (unsigned char*)malloc(ciphertext_len);
@@ -489,7 +489,7 @@ int enc_file_sloth(int mode) {
 			HMAC_Whirlpool_Update(&hmac_ctx, cipher_block, BLOCK_SIZE_SLOTH);
 		}
 
-		// ������һ����պ��������飬����д��һ�� full padding
+		// Make Sure full padding
 		if (last_block_full == 1) {
 			memset(buffer, BLOCK_SIZE_SLOTH, BLOCK_SIZE_SLOTH);  // Fill with padding value
 			for (size_t i = 0; i < BLOCK_SIZE_SLOTH; i++) {
@@ -609,7 +609,7 @@ int dec_file_sloth(int mode) {
 		uint8_t iv[IV_SIZE_SLOTH], tag[OUTPUT_SIZE_SLOTH], hmac_output[OUTPUT_SIZE_SLOTH];
 		uint8_t master_key[KEY_SIZE_SLOTH + HMAC_WHIRLPOOL_KEY_SIZE_SLOTH], hmac_key[HMAC_WHIRLPOOL_KEY_SIZE_SLOTH], ks[SERPENT_KSSIZE_SLOTH];
 
-		// ��ȡ�ļ��ܳ�
+		// Get Fise Size
 		fseek(infile, 0, SEEK_END);
 		size_t file_size = ftell(infile);
 		fseek(infile, 0, SEEK_SET);
@@ -641,12 +641,12 @@ int dec_file_sloth(int mode) {
 		HMAC_Whirlpool_Update(&hmac_ctx, salt, SALT_SIZE_SLOTH);
 		HMAC_Whirlpool_Update(&hmac_ctx, iv, IV_SIZE_SLOTH);
 
-		// ��ʼ�� CBC
+		// KS and Prepare CBC
 		serpent_set_key(derived_key, ks);
 		uint8_t prev_block[BLOCK_SIZE_SLOTH];
 		memcpy(prev_block, iv, BLOCK_SIZE_SLOTH);
 
-		// ���ܺ�У��
+		// Decryption
 		uint8_t block[BLOCK_SIZE_SLOTH], decrypted[BLOCK_SIZE_SLOTH];
 		size_t total_read = 0;
 		size_t write_len;
@@ -662,7 +662,7 @@ int dec_file_sloth(int mode) {
 
 			memcpy(prev_block, block, BLOCK_SIZE_SLOTH);
 
-			// ���һ��ʱִ�� unpad
+			// Unpad
 			total_read += BLOCK_SIZE_SLOTH;
 			if (total_read == ciphertext_size) {
 				write_len = pkcs7_unpad_sloth(decrypted, BLOCK_SIZE_SLOTH);
@@ -673,7 +673,7 @@ int dec_file_sloth(int mode) {
 			fwrite(decrypted, 1, write_len, outfile);
 		}
 
-		// ���� HMAC
+		// Compute HMAC
 		fread(tag, 1, OUTPUT_SIZE_SLOTH, infile);
 		HMAC_Whirlpool_Final(&hmac_ctx, hmac_output);
 
@@ -725,8 +725,8 @@ int dec_file_sloth(int mode) {
 			}
 			fwrite(ciphertext, 1, ciphertext_len, outfile);
 		}
-		secure_memzero_sloth(nonce, NONCE_SIZE_SLOTH); // ����nonce
-		secure_memzero_sloth(tag, TAG_SIZE_SLOTH); // ����tag
+		secure_memzero_sloth(nonce, NONCE_SIZE_SLOTH); // Zero nonce
+		secure_memzero_sloth(tag, TAG_SIZE_SLOTH); // Zero tag
 		if (ciphertext) {
 			secure_memzero_sloth(ciphertext, GCM_BLOCK_SIZE_SLOTH);
 			free(ciphertext);

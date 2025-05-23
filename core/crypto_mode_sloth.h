@@ -7,10 +7,10 @@
 extern "C" {
 #endif
 
-// GCM 加密函数
+// GCM Encryption Function
 void gcm_encrypt_sloth(const uint8_t* data, size_t length, const uint8_t* key, const uint8_t* iv, uint8_t* tag, uint8_t* encrypted_data);
 
-// GCM 解密函数
+// GCM Decryption Function
 int gcm_decrypt_sloth(uint8_t* data, size_t length, const uint8_t* key, const uint8_t* iv, const uint8_t* tag);
 
 // CTR Enc

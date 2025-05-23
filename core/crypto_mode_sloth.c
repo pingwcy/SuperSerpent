@@ -16,21 +16,21 @@ static void increment_counter(uint8_t counter[16]) {
 	}
 }
 
-// 安全封装的大端写入宏
+// Big endian Writtting Macro
 static inline void store64_be(uint8_t out[8], uint64_t val) {
 	for (int i = 0; i < 8; i++) {
 		out[i] = (uint8_t)(val >> (56 - 8 * i));
 	}
 }
 
-// 安全获取比特位（明确大端位序，MSB first）
+// MSB first get Bit
 static inline int get_bit_be(const uint8_t* data, int bit_index) {
 	uint8_t byte = data[bit_index / 8];
 	int bit_offset = 7 - (bit_index % 8);  // MSB first
 	return (byte >> bit_offset) & 1;
 }
 
-// Galois 乘法（GF(2^128)）安全版
+// Galois Mul（GF(2^128)）
 static void galois_mult(const uint8_t* X, const uint8_t* Y, uint8_t* result) {
 	memset(result, 0, BLOCK_SIZE_SLOTH);
 	uint8_t Z[BLOCK_SIZE_SLOTH] = { 0 };
@@ -57,7 +57,7 @@ static void galois_mult(const uint8_t* X, const uint8_t* Y, uint8_t* result) {
 	memcpy(result, Z, BLOCK_SIZE_SLOTH);
 }
 
-// GHASH（加固长度处理）
+// GHASH Compute
 static void ghash(const uint8_t* H, const uint8_t* data, size_t length, uint8_t* tag) {
 	uint8_t Y[BLOCK_SIZE_SLOTH] = { 0 };
 	uint8_t temp[BLOCK_SIZE_SLOTH];
@@ -75,13 +75,13 @@ static void ghash(const uint8_t* H, const uint8_t* data, size_t length, uint8_t*
 		memcpy(Y, temp, BLOCK_SIZE_SLOTH);
 	}
 
-	// 添加长度字段（大端格式，平台无关）
+	// Add Length (Big Endian)
 	uint8_t len_block[BLOCK_SIZE_SLOTH] = { 0 };
-	uint64_t aad_bitlen = 0;  // AAD 为 0
+	uint64_t aad_bitlen = 0;  // AAD is 0
 	uint64_t ciphertext_bitlen = ((uint64_t)length) * 8;
 
-	store64_be(len_block, aad_bitlen);                 // 前 8 字节
-	store64_be(len_block + 8, ciphertext_bitlen);      // 后 8 字节
+	store64_be(len_block, aad_bitlen);                 // Before 8 Bytes
+	store64_be(len_block + 8, ciphertext_bitlen);      // After 8 Bytes 
 
 	for (int j = 0; j < BLOCK_SIZE_SLOTH; j++) {
 		Y[j] ^= len_block[j];
@@ -96,7 +96,7 @@ static void ghash(const uint8_t* H, const uint8_t* data, size_t length, uint8_t*
 }
 
 
-// GCM 加密
+// GCM Encryption Function
 void gcm_encrypt_sloth(const uint8_t* data, size_t length, const uint8_t* key, const uint8_t* iv, uint8_t* tag, uint8_t* encrypted_data) {
 	if (!data || !key || !iv || !tag || !encrypted_data) return;
 
@@ -138,7 +138,7 @@ void gcm_encrypt_sloth(const uint8_t* data, size_t length, const uint8_t* key, c
 
 }
 
-// GCM 解密
+// GCM Decryption Function
 int gcm_decrypt_sloth(uint8_t* data, size_t length, const uint8_t* key, const uint8_t* iv, const uint8_t* tag) {
 	if (!data || !key || !iv || !tag) return -1;
 
@@ -196,7 +196,7 @@ void ctr_encrypt_sloth(const uint8_t* data, size_t length, const uint8_t* key, u
 		uint64_t block_index = (offset_bytes + i) / BLOCK_SIZE_SLOTH;
 		size_t block_offset = (offset_bytes + i) % BLOCK_SIZE_SLOTH;
 
-		// 构造 counter
+		// Get counter
 		memcpy(counter, nonce, NONCE_SIZE_SLOTH);
 		counter[12] = (block_index >> 24) & 0xFF;
 		counter[13] = (block_index >> 16) & 0xFF;
@@ -220,10 +220,10 @@ void ctr_decrypt_sloth(uint8_t* data, size_t length, const uint8_t* key, uint64_
 }
 
 void sloth_kdf(const char* password, const unsigned char* salt, unsigned char* out_key) {
-	const int iterations = ITERATIONS_SLOTH; // 建议的迭代次数，可根据安全需求调整
+	const int iterations = ITERATIONS_SLOTH;
 	PBKDF2_HMAC_Whirlpool(
 		(const uint8_t*)password, strlen(password),
-		salt, 16, // 假设盐值长度是16字节(128位)
+		salt, 16,
 		iterations,
 		KEY_SIZE_SLOTH,
 		out_key

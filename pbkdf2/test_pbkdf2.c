@@ -6,7 +6,7 @@
 int main() {
     uint8_t password[] = "mypassword";
     uint8_t salt[] = "random_salt";
-    uint8_t derived_key[32];  // 需要 32 字节的密钥
+    uint8_t derived_key[32]; 
     int iterations = 1000;
 
     PBKDF2_HMAC_Whirlpool(password, strlen((char *)password), 

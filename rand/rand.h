@@ -1,18 +1,18 @@
 #ifndef RANDOM_UTILS_H
 #define RANDOM_UTILS_H
 
-#include <stddef.h> // 用于 size_t
+#include <stddef.h> // For size_t
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /**
- * @brief 生成随机字节并填充到缓冲区
+ * @brief Fill Buffer with Secure Randoms Bytes
  * 
- * @param buf 用于存储随机字节的缓冲区
- * @param len 需要生成的随机字节数
- * @return int 成功返回 0，失败返回 -1
+ * @param buf Buffer to Store Random Bytes[]
+ * @param len Required Random Bytes Length
+ * @return int Success for 0，Fail for -1
  */
 //int get_random_bytes(void *buf, size_t len);
 
