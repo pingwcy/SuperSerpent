@@ -8,7 +8,7 @@
 </a>
 
 **SuperSerpent** is an experimental and educational project that implements both **transparent filesystem encryption** (via FUSE on Linux) and **interactive file-level encryption** with strong cryptographic algorithms and high portability.
-**Known Security Issue: CTR Mode in FileSystem will reuse counters when changing files**
+
 ---
 
 ## ✨ Features
@@ -25,6 +25,8 @@
 - 🧷 **Statically linked libfuse v2.9.9**:
   - Supports both glibc (≥ 2.31) and musl
   - Fully static binary on musl-based systems for maximum compatibility
+  
+- **Known Security Issue**: CTR Mode in FileSystem will reuse counters when changing files
 
 ---
 
