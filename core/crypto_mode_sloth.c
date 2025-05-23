@@ -30,7 +30,7 @@ static inline int get_bit_be(const uint8_t* data, int bit_index) {
 	return (byte >> bit_offset) & 1;
 }
 
-// Galois Mul（GF(2^128)）
+// Galois Mul (GF(2^128))
 static void galois_mult(const uint8_t* X, const uint8_t* Y, uint8_t* result) {
 	memset(result, 0, BLOCK_SIZE_SLOTH);
 	uint8_t Z[BLOCK_SIZE_SLOTH] = { 0 };
