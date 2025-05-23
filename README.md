@@ -8,6 +8,7 @@
 </a>
 
 **SuperSerpent** is an experimental and educational project that implements both **transparent filesystem encryption** (via FUSE on Linux) and **interactive file-level encryption** with strong cryptographic algorithms and high portability.
+
 ---
 
 ## ✨ Features
