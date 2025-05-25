@@ -350,11 +350,11 @@ void xts_init(XTS_CTX *ctx, block_cipher_fn encrypt_fn, block_cipher_fn decrypt_
     ctx->key_length = key_schedule_size;
 }
 
-void serpent_encrypt_fn(const uint8_t *in, uint8_t *out, const void *key) {
+void serpent_encrypt_fn(const uint8_t *in, uint8_t *out, const uint8_t *key) {
     serpent_encrypt(in, out, (uint8_t *)key);
 }
 
-void serpent_decrypt_fn(const uint8_t *in, uint8_t *out, const void *key) {
+void serpent_decrypt_fn(const uint8_t *in, uint8_t *out, const uint8_t *key) {
     serpent_decrypt(in, out, (uint8_t *)key);
 }
 
