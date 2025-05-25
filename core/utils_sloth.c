@@ -244,3 +244,27 @@ double get_time_ms() {
     return ts.tv_sec * 1000.0 + ts.tv_nsec / 1000000.0;
 }
 #endif
+
+// Get CRC32 for a byte
+static uint32_t crc32_update_byte(uint32_t crc, uint8_t byte) {
+    crc ^= (uint32_t)byte;
+    for (int i = 0; i < 8; i++) {
+        if (crc & 1) {
+            crc = (crc >> 1) ^ CRC32_POLYNOMIAL;
+        } else {
+            crc >>= 1;
+        }
+    }
+    return crc;
+}
+
+// Get CRC32 for a buffer
+uint32_t crc32_calculate_sloth(const uint8_t *data, size_t length) {
+    uint32_t crc = 0xFFFFFFFFu;  // Initial Value
+    
+    for (size_t i = 0; i < length; i++) {
+        crc = crc32_update_byte(crc, data[i]);
+    }
+    
+    return ~crc;
+}

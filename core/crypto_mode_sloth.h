@@ -3,6 +3,18 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "../params.h"
+
+typedef void (*block_cipher_fn)(const uint8_t *input, uint8_t *output, const uint8_t *ks);
+
+typedef struct {
+    block_cipher_fn block_encrypt;
+    block_cipher_fn block_decrypt;
+    uint8_t ks1[SERPENT_KSSIZE_SLOTH];
+    uint8_t ks2[SERPENT_KSSIZE_SLOTH];
+    size_t key_length;
+} XTS_CTX;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -21,6 +33,10 @@ void ctr_decrypt_sloth(uint8_t* data, size_t length, const uint8_t* key, uint64_
 
 // KDF Wrapper for FUSE using
 void sloth_kdf(const char* password, const unsigned char* salt, unsigned char* out_key);
+
+int xts_enc_sloth(const uint8_t key1[], const uint8_t key2[], const uint8_t plain[], size_t len, uint8_t ciphertext[], int sec_size);
+
+// int xts_dec_sloth(const uint8_t key1[], const uint8_t key2[], const uint8_t ciphertext[], uint8_t *decrypted[]);
 
 #ifdef __cplusplus
 }

@@ -229,3 +229,146 @@ void sloth_kdf(const char* password, const unsigned char* salt, unsigned char* o
 		out_key
 	);
 }
+
+//XTS Implementation
+
+static void xts_mul_alpha(uint8_t *tweak) {
+    uint8_t carry_in = 0, carry_out;
+    for (int i = 0; i < BLOCK_SIZE_SLOTH; i++) {
+        carry_out = tweak[i] >> 7;
+        tweak[i] = (tweak[i] << 1) | carry_in;
+        carry_in = carry_out;
+    }
+    if (carry_in) {
+        tweak[0] ^= 0x87;
+    }
+}
+
+
+static void xts_generate_tweak(XTS_CTX *ctx, uint64_t sector_number, uint8_t *tweak) {
+    uint8_t sector_buf[BLOCK_SIZE_SLOTH] = {0};
+    for (int i = 0; i < 8; i++) {
+        sector_buf[i] = (sector_number >> (i * 8)) & 0xFF;
+    }
+    ctx->block_encrypt(sector_buf, tweak, ctx->ks2);
+}
+
+void xts_encrypt(XTS_CTX *ctx, const uint8_t *input, uint8_t *output, 
+                 size_t length, uint64_t sector_number, size_t sector_size) {
+    if (length == 0) return;
+
+    uint8_t tweak[BLOCK_SIZE_SLOTH], pp[BLOCK_SIZE_SLOTH], cc[BLOCK_SIZE_SLOTH];
+    uint8_t alpha[BLOCK_SIZE_SLOTH] = {0};
+    alpha[BLOCK_SIZE_SLOTH - 1] = 0x87;
+    size_t i, j, blocks = length / BLOCK_SIZE_SLOTH;
+
+    xts_generate_tweak(ctx, sector_number, tweak);
+
+    for (i = 0; i < blocks; i++) {
+        for (j = 0; j < BLOCK_SIZE_SLOTH; j++) {
+            pp[j] = input[i * BLOCK_SIZE_SLOTH + j] ^ tweak[j];
+        }
+        ctx->block_encrypt(pp, cc, ctx->ks1);
+        for (j = 0; j < BLOCK_SIZE_SLOTH; j++) {
+            output[i * BLOCK_SIZE_SLOTH + j] = cc[j] ^ tweak[j];
+        }
+        xts_mul_alpha(tweak);
+    }
+
+    size_t last_len = length % BLOCK_SIZE_SLOTH;
+    if (last_len) {
+        uint8_t final_tweak[BLOCK_SIZE_SLOTH];
+        xts_mul_alpha(tweak);
+
+        uint8_t last_block[BLOCK_SIZE_SLOTH] = {0};
+        memcpy(last_block, input + blocks * BLOCK_SIZE_SLOTH, last_len);
+        for (j = 0; j < BLOCK_SIZE_SLOTH; j++) {
+            pp[j] = last_block[j] ^ final_tweak[j];
+        }
+        ctx->block_encrypt(pp, cc, ctx->ks1);
+        for (j = 0; j < BLOCK_SIZE_SLOTH; j++) {
+            cc[j] ^= final_tweak[j];
+        }
+
+        memcpy(output + (blocks - 1) * BLOCK_SIZE_SLOTH, output + (blocks - 1) * BLOCK_SIZE_SLOTH + last_len, BLOCK_SIZE_SLOTH - last_len);
+        memcpy(output + (blocks - 1) * BLOCK_SIZE_SLOTH + (BLOCK_SIZE_SLOTH - last_len), cc, last_len);
+    }
+}
+
+void xts_decrypt(XTS_CTX *ctx, const uint8_t *input, uint8_t *output,
+                 size_t length, uint64_t sector_number, size_t sector_size) {
+    if (length == 0) return;
+
+    uint8_t tweak[BLOCK_SIZE_SLOTH], pp[BLOCK_SIZE_SLOTH], cc[BLOCK_SIZE_SLOTH];
+    uint8_t alpha[BLOCK_SIZE_SLOTH] = {0};
+    alpha[BLOCK_SIZE_SLOTH - 1] = 0x87;
+    size_t i, j, blocks = length / BLOCK_SIZE_SLOTH;
+
+    xts_generate_tweak(ctx, sector_number, tweak);
+
+    for (i = 0; i < blocks; i++) {
+        for (j = 0; j < BLOCK_SIZE_SLOTH; j++) {
+            cc[j] = input[i * BLOCK_SIZE_SLOTH + j] ^ tweak[j];
+        }
+        ctx->block_decrypt(cc, pp, ctx->ks1);
+        for (j = 0; j < BLOCK_SIZE_SLOTH; j++) {
+            output[i * BLOCK_SIZE_SLOTH + j] = pp[j] ^ tweak[j];
+        }
+        xts_mul_alpha(tweak);
+    }
+
+    size_t last_len = length % BLOCK_SIZE_SLOTH;
+    if (last_len) {
+        uint8_t final_tweak[BLOCK_SIZE_SLOTH];
+        xts_mul_alpha(tweak);
+
+        uint8_t last_block[BLOCK_SIZE_SLOTH];
+        memcpy(last_block, input + blocks * BLOCK_SIZE_SLOTH, BLOCK_SIZE_SLOTH - last_len);
+        memcpy(last_block + (BLOCK_SIZE_SLOTH - last_len),
+               input + (blocks - 1) * BLOCK_SIZE_SLOTH + (BLOCK_SIZE_SLOTH - last_len), last_len);
+
+        for (j = 0; j < BLOCK_SIZE_SLOTH; j++) {
+            cc[j] = last_block[j] ^ final_tweak[j];
+        }
+
+        ctx->block_decrypt(cc, pp, ctx->ks1);
+        for (j = 0; j < BLOCK_SIZE_SLOTH; j++) {
+            pp[j] ^= final_tweak[j];
+        }
+
+        memcpy(output + (blocks - 1) * BLOCK_SIZE_SLOTH, pp + last_len, BLOCK_SIZE_SLOTH - last_len);
+        memcpy(output + blocks * BLOCK_SIZE_SLOTH, pp, last_len);
+    }
+}
+
+void xts_init(XTS_CTX *ctx, block_cipher_fn encrypt_fn, block_cipher_fn decrypt_fn, 
+              const uint8_t *key1, const uint8_t *key2, size_t key_schedule_size) {
+    ctx->block_encrypt = encrypt_fn;
+    ctx->block_decrypt = decrypt_fn;
+    memcpy(ctx->ks1, key1, key_schedule_size);
+    memcpy(ctx->ks2, key2, key_schedule_size);
+    ctx->key_length = key_schedule_size;
+}
+
+void serpent_encrypt_fn(const uint8_t *in, uint8_t *out, const void *key) {
+    serpent_encrypt(in, out, (uint8_t *)key);
+}
+
+void serpent_decrypt_fn(const uint8_t *in, uint8_t *out, const void *key) {
+    serpent_decrypt(in, out, (uint8_t *)key);
+}
+
+int xts_enc_sloth(const uint8_t key1[], const uint8_t key2[], const uint8_t plain[], size_t len, uint8_t ciphertext[], int sec_size) {
+    XTS_CTX ctx;
+    uint8_t ks1[SERPENT_KSSIZE_SLOTH];
+    uint8_t ks2[SERPENT_KSSIZE_SLOTH];
+
+    serpent_set_key(key1, ks1);
+    serpent_set_key(key2, ks2);
+
+    xts_init(&ctx, serpent_encrypt_fn, serpent_decrypt_fn, ks1, ks2, SERPENT_KSSIZE_SLOTH);
+    xts_encrypt(&ctx, plain, ciphertext, len, 0, sec_size);
+
+    return 0;
+}
+

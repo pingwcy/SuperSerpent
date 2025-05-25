@@ -3,9 +3,10 @@
 #include <string.h>
 #include <stdint.h>
 #include "pbkdf2.h"
+#include "whirlpool/misc.h"
+#include "whirlpool/Tcdefs.h"
 #include "../core/utils_sloth.h"
 #include "whirlpool/Whirlpool.h"  //  WHIRLPOOL_* API Define
-
 void HMAC_Whirlpool_Init(HMAC_Whirlpool_CTX* ctx, const uint8_t* key, size_t key_len) {
 	uint8_t key_block[BLOCK_SIZE_WHIRLPOOL_SLOTH];
 	uint8_t i_key_pad[BLOCK_SIZE_WHIRLPOOL_SLOTH];
@@ -135,6 +136,7 @@ void PBKDF2_HMAC_Whirlpool(const uint8_t* password, int password_len,
 		secure_memzero_sloth(T, sizeof(T));
 	}
 }
+
 
 // Test Function
 /*

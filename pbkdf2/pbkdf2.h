@@ -21,6 +21,7 @@ STATIC_ASSERT_SLOTH(sizeof(HMAC_Whirlpool_CTX) ==
 extern "C" {
 #endif
 
+
 /**
  * @brief Compute HMAC-Whirlpool Value
  * @param key The Key

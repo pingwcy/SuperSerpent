@@ -19,7 +19,7 @@ add_library(serpentsimd STATIC ${SOURCE_DIR}/vcserpent/SerpentFast_simd.cpp)
 
 # Windows Setting
 if(WIN32)
-	add_executable(main ${SOURCE_DIR}/main.c ${SOURCE_DIR}/core/crypto_mode_sloth.c ${SOURCE_DIR}/core/utils_sloth.c ${SOURCE_DIR}/core/logic_sloth.c ${SOURCE_DIR}/core/test_sloth.c ${SOURCE_DIR}/core/bench_sloth.c)
+	add_executable(main ${SOURCE_DIR}/main.c ${SOURCE_DIR}/core/crypto_mode_sloth.c ${SOURCE_DIR}/core/utils_sloth.c ${SOURCE_DIR}/core/logic_sloth.c ${SOURCE_DIR}/core/test_sloth.c ${SOURCE_DIR}/core/bench_sloth.c ${SOURCE_DIR}/core/makevcvol_sloth.c)
 
 	# Dependencies
 	target_link_libraries(pbkdf2 PUBLIC whirlpool)
@@ -39,7 +39,7 @@ endif()
 
 # Linux Settings
 if(UNIX)
-    add_executable(main ${SOURCE_DIR}/main.c ${SOURCE_DIR}/core/crypto_mode_sloth.c ${SOURCE_DIR}/core/utils_sloth.c ${SOURCE_DIR}/core/logic_sloth.c ${SOURCE_DIR}/core/slothfuse.c ${SOURCE_DIR}/core/test_sloth.c ${SOURCE_DIR}/core/bench_sloth.c)
+    add_executable(main ${SOURCE_DIR}/main.c ${SOURCE_DIR}/core/crypto_mode_sloth.c ${SOURCE_DIR}/core/utils_sloth.c ${SOURCE_DIR}/core/logic_sloth.c ${SOURCE_DIR}/core/slothfuse.c ${SOURCE_DIR}/core/test_sloth.c ${SOURCE_DIR}/core/bench_sloth.c ${SOURCE_DIR}/core/makevcvol_sloth.c)
     target_link_libraries(pbkdf2 PUBLIC whirlpool)
 	target_link_libraries(main PRIVATE rand pbkdf2 serpent serpentsimd)
     find_package(Threads REQUIRED)
