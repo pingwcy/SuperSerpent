@@ -350,15 +350,15 @@ void xts_init(XTS_CTX *ctx, block_cipher_fn encrypt_fn, block_cipher_fn decrypt_
     ctx->key_length = key_schedule_size;
 }
 
-void serpent_encrypt_fn(const uint8_t *in, uint8_t *out, const uint8_t *key) {
-    serpent_encrypt(in, out, (uint8_t *)key);
+void serpent_encrypt_fn(const uint8_t *in, uint8_t *out, const uint8_t *ks) {
+    serpent_encrypt(in, out, (uint8_t *)ks);
 }
 
-void serpent_decrypt_fn(const uint8_t *in, uint8_t *out, const uint8_t *key) {
-    serpent_decrypt(in, out, (uint8_t *)key);
+void serpent_decrypt_fn(const uint8_t *in, uint8_t *out, const uint8_t *ks) {
+    serpent_decrypt(in, out, (uint8_t *)ks);
 }
 
-int xts_enc_sloth(const uint8_t key1[], const uint8_t key2[], const uint8_t plain[], size_t len, uint8_t ciphertext[], int sec_size) {
+int xts_enc_sloth(const uint8_t key1[], const uint8_t key2[], const uint8_t plain[], size_t len, uint8_t ciphertext[], int sec_size, int sec_num) {
     XTS_CTX ctx;
     uint8_t ks1[SERPENT_KSSIZE_SLOTH];
     uint8_t ks2[SERPENT_KSSIZE_SLOTH];
@@ -367,7 +367,7 @@ int xts_enc_sloth(const uint8_t key1[], const uint8_t key2[], const uint8_t plai
     serpent_set_key(key2, ks2);
 
     xts_init(&ctx, serpent_encrypt_fn, serpent_decrypt_fn, ks1, ks2, SERPENT_KSSIZE_SLOTH);
-    xts_encrypt(&ctx, plain, ciphertext, len, 0, sec_size);
+    xts_encrypt(&ctx, plain, ciphertext, len, sec_num, sec_size);
 
     return 0;
 }

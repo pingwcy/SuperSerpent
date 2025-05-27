@@ -34,10 +34,12 @@ void ctr_decrypt_sloth(uint8_t* data, size_t length, const uint8_t* key, uint64_
 // KDF Wrapper for FUSE using
 void sloth_kdf(const char* password, const unsigned char* salt, unsigned char* out_key);
 
-int xts_enc_sloth(const uint8_t key1[], const uint8_t key2[], const uint8_t plain[], size_t len, uint8_t ciphertext[], int sec_size);
+int xts_enc_sloth(const uint8_t key1[], const uint8_t key2[], const uint8_t plain[], size_t len, uint8_t ciphertext[], int sec_size, int sec_num);
 
 // int xts_dec_sloth(const uint8_t key1[], const uint8_t key2[], const uint8_t ciphertext[], uint8_t *decrypted[]);
-
+void serpent_encrypt_fn(const uint8_t *in, uint8_t *out, const uint8_t *ks);
+void serpent_decrypt_fn(const uint8_t *in, uint8_t *out, const uint8_t *ks);
+void xts_encrypt(XTS_CTX *ctx, const uint8_t *input, uint8_t *output, size_t length, uint64_t sector_number, size_t sector_size);
 #ifdef __cplusplus
 }
 #endif
