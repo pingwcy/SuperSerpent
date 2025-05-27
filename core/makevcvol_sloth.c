@@ -5,6 +5,7 @@
 #include "crypto_mode_sloth.h"
 #include "../rand/rand.h"
 #include "../pbkdf2/pbkdf2.h"
+#include "../vcserpent/SerpentFast.h"
 #include "utils_sloth.h"
 #include "../params.h"
 
