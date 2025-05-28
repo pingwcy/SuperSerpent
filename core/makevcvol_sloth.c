@@ -9,7 +9,7 @@
 #include "utils_sloth.h"
 #include "../params.h"
 
-#define TC_MAX_FAT_CLUSTER_SIZE (64 * BYTES_PER_MB)
+#define TC_MAX_FAT_CLUSTER_SIZE (256 * BYTES_PER_KB)
 #define TC_SECTOR_SIZE_LEGACY 512
 #define TC_MAX_VOLUME_SECTOR_SIZE 4096
 
@@ -92,6 +92,14 @@ static void GetFatParams(fatparams *ft) {
     // Geometry always set to SECTORS/1/1
     ft->secs_track = 1;
     ft->heads = 1;
+    // Set sensible geometry
+    if (ft->num_sectors >= 65536) {
+        ft->secs_track = 63;
+        ft->heads = 255;
+    } else {
+        ft->secs_track = 32;  // fallback for small disks
+        ft->heads = 64;
+    }
 
     ft->dir_entries = 512;
     ft->fats = 2;
@@ -446,7 +454,7 @@ static void Format(int (*writeSector)(uint8_t*, XTS_CTX*, uint32_t, FILE*, fatpa
     }
     // Fill the rest of the volume with random data to avoid residue
     uint64_t writtenBytes = (uint64_t)sectorNumber * ft->sector_size;
-    uint64_t totalVolumeBytes = deviceSize - 2 * VC_VOLUME_HEADER_SIZE;
+    uint64_t totalVolumeBytes = deviceSize;
     if (writtenBytes < totalVolumeBytes) {
         uint8_t* fillBuffer = malloc(ft->sector_size);
         if (!fillBuffer) {
@@ -616,7 +624,7 @@ static int build_volume_content(char *filename, int volume_size, int sectorSize,
     uint8_t key1[KEY_SIZE_SLOTH], key2[KEY_SIZE_SLOTH];
     memcpy(key1, master_key, KEY_SIZE_SLOTH);
     memcpy(key2, master_key + KEY_SIZE_SLOTH, KEY_SIZE_SLOTH);
-    Format(writeSector, volume_size * 1024 * 1024, clusterSize, sectorSize, filename, key1, key2);
+    Format(writeSector, volume_size * 1024 * 1024 - 2 * VC_VOLUME_HEADER_SIZE, clusterSize, sectorSize, filename, key1, key2);
     return 0;
 }
 
@@ -657,7 +665,7 @@ static int build_random_volume(char *filename, int volume_size){
 int make_vera_volume_main(){
 
     char volume_name[256], volume_cap[64], password[PWD_MAX_LENGTH_SLOTH], sector[64];
-    int Volume_size, sec_size;
+    int Volume_size, sec_size, clu_size;
     char extra, extra2, need_fs[3];
     sec_size = 512; // 512 bytes Sector for FAT32
     if (get_user_input("Provide Route and Name for creating volume: ", volume_name, sizeof(volume_name)) == 0) {
@@ -669,7 +677,7 @@ int make_vera_volume_main(){
     }
     if (get_user_input("Please Set Password: ", password, sizeof(password)) == 0) {
 	}
-
+    clu_size = 0;
     uint8_t *buffer1 = (uint8_t *)malloc(VC_VOLUME_HEADER_SIZE);
     uint8_t *buffer2 = (uint8_t *)malloc(VC_VOLUME_HEADER_SIZE);
 
@@ -689,7 +697,7 @@ int make_vera_volume_main(){
     if (get_user_input("Do you need format volume as FAT?(y/n) ", need_fs, sizeof(need_fs)) == 0) {
         if (need_fs[0] == 'y') {
             //Write Data Area
-            build_volume_content(volume_name, Volume_size, sec_size, 4096, out_masterkey);
+            build_volume_content(volume_name, Volume_size, sec_size, clu_size, out_masterkey);
 	        }
         else{
             //if (get_user_input("The Sector Size of the Volume(512/1024/2048/4096): ", sector, sizeof(sector)) == 0) {

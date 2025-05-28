@@ -150,7 +150,7 @@ static int test_xts_sloth(){
         printf("[FAIL] test_xts_sloth: Output mismatch\n");
         print_hex_sloth("Expected", answer, sizeof(answer));
         print_hex_sloth("Got     ", cipher, sizeof(cipher));
-        return -4;
+        return -5;
     }
     return 0;
 }
