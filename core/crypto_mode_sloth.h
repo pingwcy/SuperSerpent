@@ -40,6 +40,8 @@ int xts_enc_sloth(const uint8_t key1[], const uint8_t key2[], const uint8_t plai
 void serpent_encrypt_fn(const uint8_t *in, uint8_t *out, const uint8_t *ks);
 void serpent_decrypt_fn(const uint8_t *in, uint8_t *out, const uint8_t *ks);
 void xts_encrypt(XTS_CTX *ctx, const uint8_t *input, uint8_t *output, size_t length, uint64_t sector_number, size_t sector_size);
+
+void xts_decrypt(XTS_CTX *ctx, const uint8_t *input, uint8_t *output, size_t length, uint64_t sector_number, size_t sector_size);
 #ifdef __cplusplus
 }
 #endif

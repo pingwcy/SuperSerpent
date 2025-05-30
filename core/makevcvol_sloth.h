@@ -6,6 +6,10 @@ extern "C" {
 
 int make_vera_volume_main();
 
+#ifndef _WIN32
+int mount_volume_entrance();
+#endif
+
 #ifdef __cplusplus
 }
 #endif

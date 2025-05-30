@@ -8,7 +8,14 @@
 #include "../vcserpent/SerpentFast.h"
 #include "utils_sloth.h"
 #include "../params.h"
-
+#if defined(_WIN32)
+#else
+#include <unistd.h>
+#include <sys/wait.h>
+#include <string.h>
+#include <fcntl.h>
+#include <errno.h>
+#endif
 #define TC_MAX_FAT_CLUSTER_SIZE (256 * BYTES_PER_KB)
 #define TC_SECTOR_SIZE_LEGACY 512
 #define TC_MAX_VOLUME_SECTOR_SIZE 4096
@@ -584,6 +591,343 @@ static int build_volume_header(uint8_t *out_buf, int volume_size, int sector_siz
 
     return 0;
 }
+
+static int get_key_volume(const char* filename, uint8_t *outHeaderkey){
+    char password[PWD_MAX_LENGTH_SLOTH];
+    FILE *file = fopen(filename, "rb");
+    if (file == NULL) {
+        perror("Can't Open File");
+        return 1;
+    }
+    uint8_t buffer[64];
+    size_t saltlen = fread(buffer, sizeof(uint8_t), 64, file);
+
+    if (saltlen < 64) {
+        if (feof(file)) {
+            printf("Container is too small!");
+        } else if (ferror(file)) {
+            perror("Error in reading file!");
+            fclose(file);
+            return 1;
+        }
+    }
+	if (get_user_input("Please enter password: ", password, sizeof(password)) != 0) {
+		return 1;
+	}
+    PBKDF2_HMAC_Whirlpool((uint8_t*)password, strlen(password), buffer, sizeof(buffer), 500000, 64, outHeaderkey);
+    fclose(file);
+    return 0;
+
+}
+static int return_volume_header(const char* filename, uint8_t *outbuffer){
+    FILE *file = fopen(filename, "rb");
+    if (file == NULL) {
+        perror("Can't Open File");
+        return 1;
+    }
+    uint8_t buffer[VC_VOLUME_HEADER_SIZE];
+    size_t salt = fread(buffer, sizeof(uint8_t), VC_VOLUME_HEADER_SIZE, file);
+
+    if (salt < VC_VOLUME_HEADER_SIZE) {
+        if (feof(file)) {
+            printf("Container is too small!");
+        } else if (ferror(file)) {
+            perror("Error in reading file!");
+            fclose(file);
+            return 1;
+        }
+    }
+    fclose(file);
+    return 0;
+
+}
+static uint64_t parse_volume_header(uint8_t *in_buf, uint8_t *OutMasterKey) {
+    uint8_t *p = in_buf;
+
+    // 1. Salt (64 bytes)
+//No salt.
+
+    // 2. "VERA" (4 bytes)
+    char vera[5] = {0};
+    memcpy(vera, p, 4);
+    p += 4;
+    // 2.1 Verify "VERA" Signature
+    if (((uint8_t *)vera)[0] != 0x56 || ((uint8_t *)vera)[1] != 0x45 || ((uint8_t *)vera)[2] != 0x52 || ((uint8_t *)vera)[3] != 0x41) {
+        printf("Wrong Password!\n");
+        return -1;
+    }
+
+    // 3. Fixed bytes: 00 05 01 0b (4 bytes)
+    uint8_t fixed1[4];
+    memcpy(fixed1, p, 4);
+    p += 4;
+
+    // 4. CRC32 for master keys (4 bytes)
+    uint8_t crc1_bytes[4];
+    memcpy(crc1_bytes, p, 4);
+    p += 4;
+
+    // 5. 16 bytes 0
+    uint8_t zero16[16];
+    memcpy(zero16, p, 16);
+    p += 16;
+
+    // 6. 8 bytes 0
+    uint8_t zero8_1[8];
+    memcpy(zero8_1, p, 8);
+    p += 8;
+
+    // 7. Volume size (8 bytes, big endian)
+    uint64_t vol_size1 = 0;
+    for (int i = 0; i < 8; ++i) {
+        vol_size1 = (vol_size1 << 8) | p[i];
+    }
+    p += 8;
+
+    // 8. Fixed bytes: 00 00 00 00 00 02 00 00 (8 bytes)
+    uint8_t fixed2[8];
+    memcpy(fixed2, p, 8);
+    p += 8;
+
+    // 9. Rewritten Volume size (8 bytes, big endian)
+    uint64_t vol_size2 = 0;
+    for (int i = 0; i < 8; ++i) {
+        vol_size2 = (vol_size2 << 8) | p[i];
+    }
+    p += 8;
+
+    // 10. 4 bytes 0
+    uint8_t zero4_1[4];
+    memcpy(zero4_1, p, 4);
+    p += 4;
+
+    // 11. Sector size (4 bytes, big endian)
+    uint32_t sector_size = 0;
+    for (int i = 0; i < 4; ++i) {
+        sector_size = (sector_size << 8) | p[i];
+    }
+    p += 4;
+
+    // 12. 120 bytes 0
+    uint8_t zero120[120];
+    memcpy(zero120, p, 120);
+    p += 120;
+
+    // 13. CRC32 before master key (4 bytes)
+    uint8_t crc2_bytes[4];
+    memcpy(crc2_bytes, p, 4);
+    p += 4;
+
+    // 14. Master Key (64 bytes)
+    uint8_t master_key[64];
+    memcpy(OutMasterKey, p, 64);
+    p += 64;
+
+    // 15. 192 bytes 0
+    uint8_t zero192[192];
+    memcpy(zero192, p, 192);
+    p += 192;
+
+    // 16. 65024 bytes random
+    uint8_t random1[65024];
+    memcpy(random1, p, 65024);
+    p += 65024;
+
+    // 17. 65536 bytes random
+    uint8_t random2[65536];
+    memcpy(random2, p, 65536);
+    p += 65536;
+
+    // Done
+    return vol_size1;
+}
+#ifndef _WIN32
+void run_cmd(const char *cmd, char *const argv[]) {
+    pid_t pid = fork();
+    if (pid == 0) {
+        execvp(cmd, argv);
+        perror("execvp failed");
+        exit(EXIT_FAILURE);
+    } else {
+        int status;
+        waitpid(pid, &status, 0);
+        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+            fprintf(stderr, "Command failed: %s\n", cmd);
+        }
+    }
+}
+void safe_unmount(const char *mapper_name, const char *loopdev) {
+    char mapper_path[256];
+    snprintf(mapper_path, sizeof(mapper_path), "/dev/mapper/%s", mapper_name);
+
+    // 1. Unmount Mapper
+    if (access(mapper_path, F_OK) == 0) {
+        printf("[*] Attempting to remove mapper device %s\n", mapper_path);
+
+        char *dmsetup_argv[] = {"dmsetup", "remove", (char *)mapper_name, NULL};
+        run_cmd("dmsetup", dmsetup_argv);
+    } else {
+        printf("[*] Mapper device %s does not exist, skipping dmsetup remove.\n", mapper_path);
+    }
+
+    // 2. Unmount Loop Device
+    if (access(loopdev, F_OK) == 0) {
+        printf("[*] Attempting to detach loop device %s\n", loopdev);
+
+        char *losetup_argv[] = {"losetup", "-d", (char *)loopdev, NULL};
+        run_cmd("losetup", losetup_argv);
+    } else {
+        printf("[*] Loop device %s does not exist, skipping losetup -d.\n", loopdev);
+    }
+
+    printf("[*] Unmount complete.\n");
+}
+
+
+static void run_losetup(const char *loopdev, const char *imagefile) {
+    pid_t pid = fork();
+    if (pid == 0) {
+        // Child: exec losetup
+        execlp("losetup", "losetup", loopdev, imagefile, NULL);
+        handle_error_sloth("losetup failed");
+    } else if (pid > 0) {
+        // Parent: wait for child
+        int status;
+        waitpid(pid, &status, 0);
+        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+            fprintf(stderr, "losetup failed with status %d\n", WEXITSTATUS(status));
+            exit(EXIT_FAILURE);
+        }
+    } else {
+        handle_error_sloth("fork for losetup failed");
+    }
+}
+
+static void run_dmsetup(const char *mapname, const char *table_line) {
+    int pipefd[2];
+    if (pipe(pipefd) == -1)
+        handle_error_sloth("pipe");
+
+    pid_t pid = fork();
+    if (pid == -1)
+        handle_error_sloth("fork");
+
+    if (pid == 0) {
+        // Child: set stdin to pipe read end, exec dmsetup
+        close(pipefd[1]); // Close write end
+        dup2(pipefd[0], STDIN_FILENO);
+        execlp("dmsetup", "dmsetup", "create", mapname, NULL);
+        handle_error_sloth("exec dmsetup failed");
+    } else {
+        // Parent: write to pipe
+        close(pipefd[0]); // Close read end
+        write(pipefd[1], table_line, strlen(table_line));
+        write(pipefd[1], "\n", 1); // dmsetup expects newline
+        close(pipefd[1]);
+
+        int status;
+        waitpid(pid, &status, 0);
+        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+            fprintf(stderr, "dmsetup failed with status %d\n", WEXITSTATUS(status));
+            exit(EXIT_FAILURE);
+        }
+    }
+}
+
+static char *find_unused_loopdev() {
+    FILE *fp = popen("losetup --find", "r");
+    if (!fp) {
+        perror("popen");
+        return NULL;
+    }
+
+    static char loopdev[64];
+    if (fgets(loopdev, sizeof(loopdev), fp) == NULL) {
+        perror("fgets");
+        pclose(fp);
+        return NULL;
+    }
+
+    pclose(fp);
+
+    // Remove newline if present
+    size_t len = strlen(loopdev);
+    if (len > 0 && loopdev[len - 1] == '\n') {
+        loopdev[len - 1] = '\0';
+    }
+
+    return loopdev;
+}
+
+
+int mount_volume_entrance(){
+    char container_path[256];
+    if (get_user_input("Please enter route and name of container: ", container_path, sizeof(container_path)) != 0) {
+		return -1;
+	}
+    uint8_t header_key[64], header_raw[VC_VOLUME_HEADER_SIZE], header_decryped[VC_VOLUME_HEADER_SIZE - 64], master_key[64];
+    // Get header key
+    get_key_volume(container_path, header_key);
+    uint8_t key1[KEY_SIZE_SLOTH], key2[KEY_SIZE_SLOTH];
+    memcpy(key1, header_key, KEY_SIZE_SLOTH);
+    memcpy(key2, header_key + KEY_SIZE_SLOTH, KEY_SIZE_SLOTH);
+    if (return_volume_header(container_path, header_raw) !=0){
+        handle_error_sloth("Error in reading header");
+        return -2;
+    }
+
+    XTS_CTX ctx;
+    uint8_t ks1[SERPENT_KSSIZE_SLOTH];
+    uint8_t ks2[SERPENT_KSSIZE_SLOTH];
+
+    serpent_set_key(key1, ks1);
+    serpent_set_key(key2, ks2);
+	// print_hex_sloth("Key1: ", key1, KEY_SIZE_SLOTH);
+	// print_hex_sloth("Key2: ", key2, KEY_SIZE_SLOTH);
+    ctx.block_encrypt = serpent_encrypt_fn;
+    ctx.block_decrypt = serpent_decrypt_fn;
+    memcpy(ctx.ks1, ks1, SERPENT_KSSIZE_SLOTH);
+    memcpy(ctx.ks2, ks2, SERPENT_KSSIZE_SLOTH);
+    ctx.key_length = SERPENT_KSSIZE_SLOTH;
+    xts_decrypt(&ctx, header_raw + 64, header_decryped, VC_VOLUME_HEADER_SIZE - 64 , 0, 512);
+
+    uint64_t vol_size = parse_volume_header(header_decryped, master_key);
+    if (vol_size < 0){
+        return -3;
+    }
+
+    const char *imagefile = container_path;
+    const char *loopdev = find_unused_loopdev();
+    if (!loopdev) {
+        fprintf(stderr, "Failed to find unused loop device.\n");
+        exit(1);
+    }
+    printf("Using loop device: %s\n", loopdev);
+
+    char xts_key_hex[129];
+    for (int i = 0; i < 64; ++i) {
+        sprintf(&xts_key_hex[i * 2], "%02X", master_key[i]);
+    }
+    int sector_size = 512;
+
+    char sectors_str[32], start_sector_str[32];
+    sprintf(sectors_str, "%d", vol_size / sector_size);
+    sprintf(start_sector_str, "%d", VC_VOLUME_HEADER_SIZE / sector_size);
+
+    run_losetup(loopdev, imagefile);
+
+    // Make dmsetup table line
+    char table_line[1024];
+    snprintf(table_line, sizeof(table_line),
+             "0 %s crypt serpent-xts-plain64 %s %s %s %s",
+             sectors_str, xts_key_hex, start_sector_str, loopdev, start_sector_str);
+
+    run_dmsetup("slothcrypt", table_line);
+
+    printf("Encrypted volume mounted as /dev/mapper/slothcrypt\n");
+}
+
+#endif
 
 static int encrypt_and_save_header(uint8_t password[], int passwordlength, const char *filename, const uint8_t *plain_header, const int sec_siz) {
     const size_t salt_size = 64;
