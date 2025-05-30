@@ -1,43 +1,56 @@
-# SuperSerpent: A Dual-Mode File/FileSystem Encryption Tool
+# 🐍 SuperSerpent: A Triple-Mode Cross-Platform Encryption Tool
 
-![Github Action](https://github.com/pingwcy/SuperSerpent/actions/workflows/build.yml/badge.svg)
+![Build Status](https://github.com/pingwcy/SuperSerpent/actions/workflows/build.yml/badge.svg)
+[![Coverity Scan](https://scan.coverity.com/projects/31700/badge.svg)](https://scan.coverity.com/projects/pingwcy-superserpent)
 
-<a href="https://scan.coverity.com/projects/pingwcy-superserpent">
-  <img alt="Coverity Scan Build Status"
-       src="https://scan.coverity.com/projects/31700/badge.svg"/>
-</a>
+**SuperSerpent** is a powerful, cross-platform encryption tool supporting **three distinct encryption modes**:
 
-**SuperSerpent** is an experimental and educational project that implements both **transparent filesystem encryption** (via FUSE on Linux) and **interactive file-level encryption** with strong cryptographic algorithms and high portability.
+1. 🔐 **Interactive File Encryption** – works on Linux & Windows  
+2. 🧊 **Transparent Filesystem Encryption** – Linux-only, FUSE-based (like gocryptfs)  
+3. 📦 **Encrypted Volume Support** – VeraCrypt-compatible volumes, with Linux-native mounting via `dm-crypt`
+
+> ✅ Open-source, educational, and experimental. Built with security and portability in mind.
 
 ---
 
 ## ✨ Features
 
-- 🔒 **Two Encryption Modes**:
-  - **Transparent Filesystem Encryption** (Linux only, using FUSE)
-  - **Interactive Single-File Encryption** (Linux and Windows)
-- 🛡️ **Encryption Algorithm**: Serpent-256
-- 🔐 **Encryption Modes**:
-  - **Filesystem mode**: CTR
-  - **File mode**: Optional CBC-HMAC or GCM
-- 🔑 **Key Derivation**: PBKDF2-HMAC-Whirlpool
-- 🧩 **Zero runtime dependencies** beyond the standard C library(glibc) OR only Linux Kernel(MUSL)
-- 🧷 **Statically linked libfuse v2.9.9**:
-  - Supports both glibc (≥ 2.31) and musl
-  - Fully static binary on musl-based systems for maximum compatibility
-  
-- **Known Security Issue**: CTR Mode in FileSystem will reuse counters when changing files
+### 🔒 Triple Encryption Modes
+
+- **📁 File Encryption** (Linux & Windows): Encrypt/decrypt individual files interactively.
+- **🔄 Filesystem Encryption** (Linux-only): A FUSE-based encrypted filesystem (like gocryptfs).
+- **💽 Volume Container Support**:
+  - Create VeraCrypt-compatible volumes on Linux and Windows
+  - Mount volumes via `dm-crypt` on Linux
+  - Windows currently supports **only creation**, mounting requires the VeraCrypt software.
+
+### 🔐 Cryptography Details
+
+- **Algorithm**: Serpent-256
+- **Modes of Operation**:
+  - Volume Mode: `XTS`
+  - Filesystem Mode: `CTR` *(⚠️ Known issue: counter reuse on modification)*
+  - File Mode: `CBC-HMAC` or `GCM`
+- **Key Derivation**: `PBKDF2-HMAC-Whirlpool`
+
+### ⚙️ Portability
+
+- Zero runtime dependencies (uses only the standard C library)
+- Fully statically linked `libfuse v2.9.9` included
+  - Supports both `glibc (≥ 2.31)` and `musl`
+  - Fully static binary for `musl`-based distros
 
 ---
 
 ## 🧪 Platform Support
 
-| Platform | File Encryption | Filesystem Encryption |
-|----------|------------------|------------------------|
-| Linux    | ✅ Supported     | ✅ Supported (via FUSE) |
-| Windows  | ✅ Supported     | 🚧 Not yet implemented *(planned via WinFsp or filter driver)* |
+| Platform | File Encryption | Filesystem Encryption | Volume Encryption |
+|----------|------------------|------------------------|--------------------|
+| **Linux**    | ✅ Supported     | ✅ Supported (via FUSE) | ✅ Full support (via `dm-crypt`) |
+| **Windows**  | ✅ Supported     | 🚧 Planned *(via WinFsp or filter driver)* | 🚧 Create-only (mounting requires VeraCrypt) |
 
 ---
+
 
 ## 🛠️ Build Instructions
 
@@ -62,7 +75,7 @@ For musl, a fully static binary is built with all dependencies included
 ### Windows
 ```bash
 mkdir build && cd build
-cmake -G ..
+cmake ..
 msbuild
 ```
 FUSE-related components are excluded (via conditional compilation)
@@ -71,13 +84,18 @@ Only the file encryption tool is compiled
 ---
 
 ## 🚀 Usage
-### 🔐 File Encryption Mode (Linux & Windows)
+### 🔐 File Encryption Mode (Linux & Windows) and Volume Encryption Mode (Linux Only)
 ```bash
 ./main
 ```
-Interactive command-line utility
+Interactive CLI:
 
-Prompts for file path, mode (CBC-HMAC or GCM), and password
+Create / Mount / Unmount VeraCrypt volumes
+
+Encrypt / Decrypt files
+
+Select encryption mode: CBC-HMAC or GCM
+
 
 ### 🔐 Transparent Filesystem Encryption (Linux Only)
 ```bash
@@ -89,10 +107,11 @@ Prompts for a password to derive the encryption key
 
 All files written to ~/secure are transparently encrypted and stored in ~/vault.
 
+
 ## 🛣️ Roadmap
  Implement filesystem encryption on Windows (via WinFsp or filter driver)
 
- Add a GUI for file encryption
+ Add a GUI for this tool
 
  // Explore Android support
 
@@ -104,6 +123,12 @@ Do not use for sensitive or production data without a thorough security audit.
 This project is licensed under the MIT License.
 
 ## 🙋 Contributing & Feedback
-Contributions, issues, and suggestions are welcome!
+Contributions and suggestions are welcome!
 
-Feel free to open a GitHub Issue or Pull Request, or start a Discussion.
+Feel free to:
+
+Open an Issue
+
+Submit a Pull Request
+
+Start a Discussion on GitHub
