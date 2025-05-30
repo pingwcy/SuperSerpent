@@ -94,11 +94,12 @@ int main(int argc, char* argv[]) {
 #endif
 			}
 			else if (input[0] == 'c') {
+#ifndef _WIN32
 				char loopname[64];
 				get_user_input("Enter Loop Device Name: ", loopname, 64);
 				safe_unmount("slothcrypt", loopname);
 			}
-
+#endif
 			else if (input[0] == 'y') {
 				hashstr_sloth();
 			}
