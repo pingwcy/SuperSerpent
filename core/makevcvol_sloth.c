@@ -612,6 +612,7 @@ static int get_key_volume(const char* filename, uint8_t *outHeaderkey){
         }
     }
 	if (get_user_input("Please enter password: ", password, sizeof(password)) != 0) {
+        fclose(file);
 		return 1;
 	}
     PBKDF2_HMAC_Whirlpool((uint8_t*)password, strlen(password), buffer, sizeof(buffer), 500000, 64, outHeaderkey);
@@ -964,6 +965,7 @@ static int encrypt_and_save_header(uint8_t password[], int passwordlength, const
     FILE *fp = fopen(filename, "ab");
     if (!fp) {
         perror("fopen");
+        free(ciphertext);
         return -1;
     }
     fwrite(ciphertext, 1, VC_VOLUME_HEADER_SIZE, fp);
@@ -1065,8 +1067,8 @@ int make_vera_volume_main(){
     encrypt_and_save_header((uint8_t*)password, strlen(password), volume_name, buffer2, sec_size);
 
     // Clean Up
-    secure_memzero_sloth(buffer1, sizeof(buffer1));
-    secure_memzero_sloth(buffer2, sizeof(buffer2));
+    secure_memzero_sloth(buffer1, VC_VOLUME_HEADER_SIZE);
+    secure_memzero_sloth(buffer2, VC_VOLUME_HEADER_SIZE);
     secure_memzero_sloth(password, sizeof(password));
     secure_memzero_sloth(out_masterkey, sizeof(out_masterkey));
     secure_memzero_sloth(in_masterkey, sizeof(in_masterkey));
