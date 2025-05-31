@@ -923,6 +923,15 @@ int mount_volume_entrance(){
              sectors_str, xts_key_hex, start_sector_str, loopdev, start_sector_str);
 
     run_dmsetup("slothcrypt", table_line);
+    secure_memzero_sloth(table_line, sizeof(table_line));
+    secure_memzero_sloth(xts_key_hex, sizeof(xts_key_hex));
+    secure_memzero_sloth(master_key, sizeof(master_key));
+    secure_memzero_sloth(header_decryped, sizeof(header_decryped));
+    secure_memzero_sloth(key1, sizeof(key1));
+    secure_memzero_sloth(key2, sizeof(key2));
+    secure_memzero_sloth(ks1, sizeof(ks1));
+    secure_memzero_sloth(ks2, sizeof(ks2));
+    secure_memzero_sloth(header_key, sizeof(header_key));
 
     printf("Encrypted volume mounted as /dev/mapper/slothcrypt\n");
 }
@@ -1056,8 +1065,14 @@ int make_vera_volume_main(){
     encrypt_and_save_header((uint8_t*)password, strlen(password), volume_name, buffer2, sec_size);
 
     // Clean Up
+    secure_memzero_sloth(buffer1, sizeof(buffer1));
+    secure_memzero_sloth(buffer2, sizeof(buffer2));
+    secure_memzero_sloth(password, sizeof(password));
+    secure_memzero_sloth(out_masterkey, sizeof(out_masterkey));
+    secure_memzero_sloth(in_masterkey, sizeof(in_masterkey));
     free(buffer1);
     free(buffer2);
+
     printf("Volume successfully created.\n");
 
     return 0;

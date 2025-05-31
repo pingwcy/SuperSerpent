@@ -35,7 +35,7 @@ int main(int argc, char* argv[]) {
 		do {
 			printf("SuperSerpent, PBKDF2 with Whirlpool, Iter %d, salt %d, iv %d, nonce %d, tag %d\n", ITERATIONS_SLOTH, SALT_SIZE_SLOTH, IV_SIZE_SLOTH, NONCE_SIZE_SLOTH, TAG_SIZE_SLOTH);
 			fflush(stdout);
-			printf("Select function: \n1.CBC Encryption    2.CBC Decryption    3.CBC Encrypt File    4.CBC Decrypt File\n5.GCM Encryption    6.GCM Decryption    7.GCM Encrypt File    8.GCM Decrypt File\na.Create VeraCrypt File Container       0.Benchmark   y.String Hash  z.File Hash\n");
+			printf("1.CBC Encryption    2.CBC Decryption    3.CBC Encrypt File    4.CBC Decrypt File\n5.GCM Encryption    6.GCM Decryption    7.GCM Encrypt File    8.GCM Decrypt File\na.Create VeraCrypt File Container       b.Mount VeraCrypt Vol c.Dismount Volume\n0.Benchmark         y.String Hash       z.File Hash\n");
 			fflush(stdout);
 			char input[10];  // Selection
 			if (get_user_input("Make selection: ", input, sizeof(input)) != 0) {
