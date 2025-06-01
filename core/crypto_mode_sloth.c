@@ -254,16 +254,16 @@ static void xts_generate_tweak(XTS_CTX *ctx, uint64_t sector_number, uint8_t *tw
 }
 
 void xts_encrypt(XTS_CTX *ctx, const uint8_t *input, uint8_t *output, 
-                 size_t length, uint64_t sector_number, size_t sector_size) {
+                 size_t length, uint64_t sector_number, uint64_t sector_size) {
     if (length == 0) return;
 
     uint8_t tweak[BLOCK_SIZE_SLOTH], pp[BLOCK_SIZE_SLOTH], cc[BLOCK_SIZE_SLOTH];
-    uint8_t alpha[BLOCK_SIZE_SLOTH] = {0};
-    alpha[BLOCK_SIZE_SLOTH - 1] = 0x87;
     size_t i, j, blocks = length / BLOCK_SIZE_SLOTH;
+    size_t last_len = length % BLOCK_SIZE_SLOTH;
 
     xts_generate_tweak(ctx, sector_number, tweak);
 
+    // Normal Blocks
     for (i = 0; i < blocks; i++) {
         for (j = 0; j < BLOCK_SIZE_SLOTH; j++) {
             pp[j] = input[i * BLOCK_SIZE_SLOTH + j] ^ tweak[j];
@@ -275,13 +275,32 @@ void xts_encrypt(XTS_CTX *ctx, const uint8_t *input, uint8_t *output,
         xts_mul_alpha(tweak);
     }
 
-    size_t last_len = length % BLOCK_SIZE_SLOTH;
+    // partial block
     if (last_len) {
         uint8_t final_tweak[BLOCK_SIZE_SLOTH];
-        xts_mul_alpha(tweak);
+        memcpy(final_tweak, tweak, BLOCK_SIZE_SLOTH);  // Save current tweak
+        xts_mul_alpha(final_tweak);                    // final tweak = tweak * α
 
+        // Last two
+        uint8_t c_full[BLOCK_SIZE_SLOTH];
+        const uint8_t *last_full_block = input + (blocks - 1) * BLOCK_SIZE_SLOTH;
+        for (j = 0; j < BLOCK_SIZE_SLOTH; j++) {
+            pp[j] = last_full_block[j] ^ tweak[j];
+        }
+        ctx->block_encrypt(pp, cc, ctx->ks1);
+        for (j = 0; j < BLOCK_SIZE_SLOTH; j++) {
+            c_full[j] = cc[j] ^ tweak[j];
+        }
+
+        // c_full to partial block cipher
+        memcpy(output + blocks * BLOCK_SIZE_SLOTH, c_full, last_len);
+
+        // Process partial block
         uint8_t last_block[BLOCK_SIZE_SLOTH] = {0};
         memcpy(last_block, input + blocks * BLOCK_SIZE_SLOTH, last_len);
+        memcpy(last_block + last_len, c_full + last_len, BLOCK_SIZE_SLOTH - last_len);
+
+        
         for (j = 0; j < BLOCK_SIZE_SLOTH; j++) {
             pp[j] = last_block[j] ^ final_tweak[j];
         }
@@ -290,22 +309,27 @@ void xts_encrypt(XTS_CTX *ctx, const uint8_t *input, uint8_t *output,
             cc[j] ^= final_tweak[j];
         }
 
-        memcpy(output + (blocks - 1) * BLOCK_SIZE_SLOTH, output + (blocks - 1) * BLOCK_SIZE_SLOTH + last_len, BLOCK_SIZE_SLOTH - last_len);
-        memcpy(output + (blocks - 1) * BLOCK_SIZE_SLOTH + (BLOCK_SIZE_SLOTH - last_len), cc, last_len);
+        // Output
+        memcpy(output + (blocks - 1) * BLOCK_SIZE_SLOTH, cc, BLOCK_SIZE_SLOTH);
     }
 }
 
 void xts_decrypt(XTS_CTX *ctx, const uint8_t *input, uint8_t *output,
-                 size_t length, uint64_t sector_number, size_t sector_size) {
+                 size_t length, uint64_t sector_number, uint64_t sector_size) {
     if (length == 0) return;
 
     uint8_t tweak[BLOCK_SIZE_SLOTH], pp[BLOCK_SIZE_SLOTH], cc[BLOCK_SIZE_SLOTH];
-    uint8_t alpha[BLOCK_SIZE_SLOTH] = {0};
-    alpha[BLOCK_SIZE_SLOTH - 1] = 0x87;
     size_t i, j, blocks = length / BLOCK_SIZE_SLOTH;
+    size_t last_len = length % BLOCK_SIZE_SLOTH;
 
     xts_generate_tweak(ctx, sector_number, tweak);
 
+    // If partial block, remain later to process, process N-1 blocks first
+    if (last_len && blocks >= 1) {
+        blocks -= 1;
+    }
+
+    // Normal decryption
     for (i = 0; i < blocks; i++) {
         for (j = 0; j < BLOCK_SIZE_SLOTH; j++) {
             cc[j] = input[i * BLOCK_SIZE_SLOTH + j] ^ tweak[j];
@@ -317,27 +341,41 @@ void xts_decrypt(XTS_CTX *ctx, const uint8_t *input, uint8_t *output,
         xts_mul_alpha(tweak);
     }
 
-    size_t last_len = length % BLOCK_SIZE_SLOTH;
+    // Process CTS
     if (last_len) {
         uint8_t final_tweak[BLOCK_SIZE_SLOTH];
-        xts_mul_alpha(tweak);
+        memcpy(final_tweak, tweak, BLOCK_SIZE_SLOTH);  // Save current tweak
+        xts_mul_alpha(final_tweak);                    // final_tweak = tweak * α
 
-        uint8_t last_block[BLOCK_SIZE_SLOTH];
-        memcpy(last_block, input + blocks * BLOCK_SIZE_SLOTH, BLOCK_SIZE_SLOTH - last_len);
-        memcpy(last_block + (BLOCK_SIZE_SLOTH - last_len),
-               input + (blocks - 1) * BLOCK_SIZE_SLOTH + (BLOCK_SIZE_SLOTH - last_len), last_len);
-
+        // cc = Cn
+        const uint8_t *cn = input + blocks * BLOCK_SIZE_SLOTH;
         for (j = 0; j < BLOCK_SIZE_SLOTH; j++) {
-            cc[j] = last_block[j] ^ final_tweak[j];
+            cc[j] = cn[j] ^ final_tweak[j];
         }
-
         ctx->block_decrypt(cc, pp, ctx->ks1);
         for (j = 0; j < BLOCK_SIZE_SLOTH; j++) {
             pp[j] ^= final_tweak[j];
         }
 
-        memcpy(output + (blocks - 1) * BLOCK_SIZE_SLOTH, pp + last_len, BLOCK_SIZE_SLOTH - last_len);
-        memcpy(output + blocks * BLOCK_SIZE_SLOTH, pp, last_len);
+        // output last
+        memcpy(output + (blocks + 1) * BLOCK_SIZE_SLOTH, pp, last_len);
+
+        // To recover last two
+        uint8_t c_full[BLOCK_SIZE_SLOTH];
+        memcpy(c_full, cn, last_len);  // last_len From Cn
+        memcpy(c_full + last_len, input + blocks * BLOCK_SIZE_SLOTH + last_len,
+               BLOCK_SIZE_SLOTH - last_len); // Last half from Cn-1 last
+
+        for (j = 0; j < BLOCK_SIZE_SLOTH; j++) {
+            cc[j] = c_full[j] ^ tweak[j];
+        }
+        ctx->block_decrypt(cc, pp, ctx->ks1);
+        for (j = 0; j < BLOCK_SIZE_SLOTH; j++) {
+            pp[j] ^= tweak[j];
+        }
+
+        // Recover last two
+        memcpy(output + blocks * BLOCK_SIZE_SLOTH, pp, BLOCK_SIZE_SLOTH);
     }
 }
 
@@ -358,7 +396,7 @@ void serpent_decrypt_fn(const uint8_t *in, uint8_t *out, const uint8_t *ks) {
     serpent_decrypt(in, out, (uint8_t *)ks);
 }
 
-int xts_enc_sloth(const uint8_t key1[], const uint8_t key2[], const uint8_t plain[], size_t len, uint8_t ciphertext[], int sec_size, int sec_num) {
+int xts_enc_sloth(const uint8_t key1[], const uint8_t key2[], const uint8_t plain[], size_t len, uint8_t ciphertext[], uint64_t sec_size, uint64_t sec_num) {
     XTS_CTX ctx;
     uint8_t ks1[SERPENT_KSSIZE_SLOTH];
     uint8_t ks2[SERPENT_KSSIZE_SLOTH];

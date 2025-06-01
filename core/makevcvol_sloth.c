@@ -8,6 +8,7 @@
 #include "../vcserpent/SerpentFast.h"
 #include "utils_sloth.h"
 #include "../params.h"
+#include <inttypes.h>
 #if defined(_WIN32)
 #else
 #include <unistd.h>
@@ -275,7 +276,7 @@ static void PutFSInfo(uint8_t *sector, fatparams *ft) {
     sector[508 + 0] = 0x00;
 }
 
-static int writeSector(uint8_t *sector, XTS_CTX *ctx, uint32_t sectorNumber, FILE *file, fatparams *ft) {
+static int writeSector(uint8_t *sector, XTS_CTX *ctx, uint64_t sectorNumber, FILE *file, fatparams *ft) {
     // Move file pointer to the correct position
     // fseek(file, (sectorNumber * ft->sector_size) + VC_VOLUME_HEADER_SIZE, SEEK_SET);
     // Encrypt Sector
@@ -285,7 +286,7 @@ static int writeSector(uint8_t *sector, XTS_CTX *ctx, uint32_t sectorNumber, FIL
     return fwrite(cipher_sector, ft->sector_size, 1, file) == 1;
 }
 
-static void Format(int (*writeSector)(uint8_t*, XTS_CTX*, uint32_t, FILE*, fatparams*), uint64_t deviceSize, uint32_t clusterSize, uint32_t sectorSize, const char *filename, uint8_t *key1, uint8_t *key2) {
+static void Format(int (*writeSector)(uint8_t*, XTS_CTX*, uint64_t, FILE*, fatparams*), uint64_t deviceSize, uint32_t clusterSize, uint32_t sectorSize, const char *filename, uint8_t *key1, uint8_t *key2) {
     XTS_CTX ctx;
     uint8_t ks1[SERPENT_KSSIZE_SLOTH];
     uint8_t ks2[SERPENT_KSSIZE_SLOTH];
@@ -322,7 +323,7 @@ static void Format(int (*writeSector)(uint8_t*, XTS_CTX*, uint32_t, FILE*, fatpa
         fprintf(stderr, "Memory allocation failed\n");
         return;
     }
-    uint32_t sectorNumber = 0;
+    uint64_t sectorNumber = 0;
 
     // Open the output file
     FILE *file = fopen(filename, "ab");
@@ -485,7 +486,7 @@ static void Format(int (*writeSector)(uint8_t*, XTS_CTX*, uint32_t, FILE*, fatpa
     fclose(file);
 }
 
-static int build_volume_header(uint8_t *out_buf, int volume_size, int sector_size, uint8_t *out_masterkey, int issecond, uint8_t *in_masterkey){
+static int build_volume_header(uint8_t *out_buf, uint64_t volume_size, uint64_t sector_size, uint8_t *out_masterkey, int issecond, uint8_t *in_masterkey){
     uint8_t *p = out_buf;
     // 1. Write Salt
     if (secure_random(p, 64) != 0) return -1;
@@ -512,7 +513,7 @@ static int build_volume_header(uint8_t *out_buf, int volume_size, int sector_siz
     memset(p, 0, 8); p += 8;
 
     // 7. Write 8 bytes volume size in big endian
-    uint64_t vol_size = volume_size * 1024 * 1024 - 2 * VC_VOLUME_HEADER_SIZE;
+    uint64_t vol_size = (uint64_t)volume_size * 1024 * 1024 - 2 * VC_VOLUME_HEADER_SIZE;
     for (int i = 7; i >= 0; --i)
         *p++ = (vol_size >> (i * 8)) & 0xFF;
 
@@ -655,7 +656,7 @@ static uint64_t parse_volume_header(uint8_t *in_buf, uint8_t *OutMasterKey) {
     // 2.1 Verify "VERA" Signature
     if (((uint8_t *)vera)[0] != 0x56 || ((uint8_t *)vera)[1] != 0x45 || ((uint8_t *)vera)[2] != 0x52 || ((uint8_t *)vera)[3] != 0x41) {
         printf("Wrong Password!\n");
-        return -1;
+        return 0;
     }
 
     // 3. Fixed bytes: 00 05 01 0b (4 bytes)
@@ -893,7 +894,7 @@ int mount_volume_entrance(){
     xts_decrypt(&ctx, header_raw + 64, header_decryped, VC_VOLUME_HEADER_SIZE - 64 , 0, 512);
 
     uint64_t vol_size = parse_volume_header(header_decryped, master_key);
-    if (vol_size < 0){
+    if (vol_size <= 0){
         return -3;
     }
 
@@ -909,11 +910,11 @@ int mount_volume_entrance(){
     for (int i = 0; i < 64; ++i) {
         sprintf(&xts_key_hex[i * 2], "%02X", master_key[i]);
     }
-    int sector_size = 512;
+    uint64_t sector_size = 512;
 
     char sectors_str[32], start_sector_str[32];
-    sprintf(sectors_str, "%d", vol_size / sector_size);
-    sprintf(start_sector_str, "%d", VC_VOLUME_HEADER_SIZE / sector_size);
+    sprintf(sectors_str, "%" PRIu64, vol_size / sector_size);
+    sprintf(start_sector_str, "%" PRIu64, VC_VOLUME_HEADER_SIZE / sector_size);
 
     run_losetup(loopdev, imagefile);
 
@@ -939,7 +940,7 @@ int mount_volume_entrance(){
 
 #endif
 
-static int encrypt_and_save_header(uint8_t password[], int passwordlength, const char *filename, const uint8_t *plain_header, const int sec_siz) {
+static int encrypt_and_save_header(uint8_t password[], int passwordlength, const char *filename, const uint8_t *plain_header, const uint64_t sec_siz) {
     const size_t salt_size = 64;
 
     uint8_t *ciphertext = (uint8_t *)malloc(VC_VOLUME_HEADER_SIZE);
@@ -975,15 +976,15 @@ static int encrypt_and_save_header(uint8_t password[], int passwordlength, const
     return 0;
 }
 
-static int build_volume_content(char *filename, int volume_size, int sectorSize, int clusterSize, uint8_t *master_key) {
+static int build_volume_content(char *filename, uint64_t volume_size, uint64_t sectorSize, uint64_t clusterSize, uint8_t *master_key) {
     uint8_t key1[KEY_SIZE_SLOTH], key2[KEY_SIZE_SLOTH];
     memcpy(key1, master_key, KEY_SIZE_SLOTH);
     memcpy(key2, master_key + KEY_SIZE_SLOTH, KEY_SIZE_SLOTH);
-    Format(writeSector, volume_size * 1024 * 1024 - 2 * VC_VOLUME_HEADER_SIZE, clusterSize, sectorSize, filename, key1, key2);
+    Format(writeSector, (uint64_t)volume_size * 1024 * 1024 - 2 * VC_VOLUME_HEADER_SIZE, clusterSize, sectorSize, filename, key1, key2);
     return 0;
 }
 
-static int build_random_volume(char *filename, int volume_size){
+static int build_random_volume(char *filename, uint64_t volume_size){
     FILE *fp = fopen(filename, "ab");  // Append
     if (!fp) {
         perror("fopen");
@@ -994,7 +995,7 @@ static int build_random_volume(char *filename, int volume_size){
     const size_t chunk_size = 4096;
     uint8_t buffer[4096];
 
-    size_t remaining = volume_size * 1024 * 1024 - 2 * VC_VOLUME_HEADER_SIZE;
+    uint64_t remaining = volume_size * 1024 * 1024 - 2 * VC_VOLUME_HEADER_SIZE;
     while (remaining > 0) {
         size_t this_chunk = (remaining > chunk_size) ? chunk_size : remaining;
 
@@ -1020,14 +1021,14 @@ static int build_random_volume(char *filename, int volume_size){
 int make_vera_volume_main(){
 
     char volume_name[256], volume_cap[64], password[PWD_MAX_LENGTH_SLOTH], sector[64];
-    int Volume_size, sec_size, clu_size;
+    uint64_t Volume_size, sec_size, clu_size;
     char extra, extra2, need_fs[3];
     sec_size = 512; // 512 bytes Sector for FAT32
     if (get_user_input("Provide Route and Name for creating volume: ", volume_name, sizeof(volume_name)) == 0) {
 	}
     if (get_user_input("The Size(MB) of the Volume: ", volume_cap, sizeof(volume_cap)) == 0) {
 	}
-    if (sscanf(volume_cap, "%d%c", &Volume_size, &extra) != 1) {
+    if (sscanf(volume_cap, "%" SCNu64 "%c", &Volume_size, &extra) != 1) {
         printf("Invalid Input.\n");
     }
     if (get_user_input("Please Set Password: ", password, sizeof(password)) == 0) {
@@ -1038,6 +1039,8 @@ int make_vera_volume_main(){
 
     if ((buffer1 == NULL) || (buffer2 == NULL)) {
         perror("Malloc failed");
+        free(buffer1);
+        free(buffer2);
         return EXIT_FAILURE;
     }
     uint8_t in_masterkey[64], out_masterkey[64];

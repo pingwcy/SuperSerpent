@@ -54,6 +54,8 @@ int benchmark_serpent_sloth() {
     uint8_t *output = (uint8_t *)malloc(TEST_BUFFER_SIZE);
     if (!input || !output) {
         fprintf(stderr, "Memory allocation failed\n");
+        free(input);
+        free(output);
         return -1;
     }
 
