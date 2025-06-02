@@ -24,7 +24,7 @@
 #include "../uthash.h"
 
 static char user_password[256]; // Global Password Cache
-static char mount_point[PATH_MAX];
+static char *mount_point = NULL;
 
 typedef struct {
     char path[PATH_MAX];                     // Route of File
@@ -135,8 +135,11 @@ FileLock* get_or_create_lock(const char* path) {
 static void get_full_path(char* fullpath, const char* path) {
 	snprintf(fullpath, PATH_MAX, "%s%s", mount_point, path);
 }
-
+#ifdef USING_LIBFUSE_V3
+static int myfs_getattr(const char* path, struct stat* stbuf, struct fuse_file_info *fi) {
+#else
 static int myfs_getattr(const char* path, struct stat* stbuf) {
+#endif
 	if (!path || !stbuf) return -EFAULT;
 	memset(stbuf, 0, sizeof(struct stat));
 
@@ -303,8 +306,11 @@ static int myfs_create(const char* path, mode_t mode, struct fuse_file_info* fi)
 	get_or_create_lock(path);  // Initial the lock for the file
 	return 0;
 }
-
+#ifdef USING_LIBFUSE_V3
+static int myfs_truncate(const char* path, off_t size, struct fuse_file_info *fi) {
+#else
 static int myfs_truncate(const char* path, off_t size) {
+#endif
 	if (size < 0) return -EINVAL;
 
 	char full_path[PATH_MAX];
@@ -322,8 +328,11 @@ static int myfs_truncate(const char* path, off_t size) {
 	if (res == -1) return -errno;
 	return 0;
 }
-
+#ifdef USING_LIBFUSE_V3
+static int myfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi, enum fuse_readdir_flags flags) {
+#else
 static int myfs_readdir(const char* path, void* buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info* fi) {
+#endif
 	(void)offset;
 	(void)fi;
 
@@ -334,15 +343,22 @@ static int myfs_readdir(const char* path, void* buf, fuse_fill_dir_t filler, off
 	get_full_path(full_path, path);
 	dp = opendir(full_path);
 	if (!dp) return -errno;
-
+#ifdef USING_LIBFUSE_V3
+	filler(buf, ".", NULL, 0, 0);
+	filler(buf, "..", NULL, 0, 0);
+#else
 	filler(buf, ".", NULL, 0);
 	filler(buf, "..", NULL, 0);
-
+#endif
 	while ((de = readdir(dp)) != NULL) {
 		// Ignore hidden files（e.g. .DS_Store）
 		if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0)
 			continue;
+#ifdef USING_LIBFUSE_V3
+		filler(buf, de->d_name, NULL, 0, 0);
+#else
 		filler(buf, de->d_name, NULL, 0);
+#endif
 	}
 	closedir(dp);
 	return 0;
@@ -359,8 +375,11 @@ static int myfs_unlink(const char* path) {
 	//remove_cached_key(path);      // Remove Cached Key
 	return 0;
 }
-
+#ifdef USING_LIBFUSE_V3
+static int myfs_rename(const char* from, const char* to, unsigned int flags) {
+#else
 static int myfs_rename(const char* from, const char* to) {
+#endif
 	char full_from[PATH_MAX], full_to[PATH_MAX];
 	get_full_path(full_from, from);
 	get_full_path(full_to, to);
@@ -402,15 +421,21 @@ static int myfs_fsync(const char* path, int isdatasync, struct fuse_file_info* f
 	if (fd < 0) return -EIO;
 	return (fsync(fd) == 0) ? 0 : -errno;
 }
-
+#ifdef USING_LIBFUSE_V3
+static int myfs_chmod(const char* path, mode_t mode, struct fuse_file_info *fi) {
+#else
 static int myfs_chmod(const char* path, mode_t mode) {
+#endif
 	//(void)fi;
 	char fullpath[PATH_MAX];
 	get_full_path(fullpath, path);
 	return (chmod(fullpath, mode) == 0) ? 0 : -errno;
 }
-
+#ifdef USING_LIBFUSE_V3
+static int myfs_chown(const char* path, uid_t uid, gid_t gid, struct fuse_file_info *fi) {
+#else
 static int myfs_chown(const char* path, uid_t uid, gid_t gid) {
+#endif
 	//(void)fi;
 	char fullpath[PATH_MAX];
 	get_full_path(fullpath, path);
@@ -707,11 +732,20 @@ int main_fuse_sloth(int argc, char* argv[]) {
 		exit(1);
 	}
 	else{
+#ifdef USING_LIBFUSE_V3
+		printf("Using libfuse 3.17");
+#else
+		printf("Using libfuse 2.99");
+#endif
 		if (get_user_input("Please Enter Password: ", user_password, sizeof(user_password)) != 0) {
 			//continue;
 		}
-		strcpy(mount_point, argv[2]);
+		mount_point = realpath(argv[2], NULL);
+#ifdef USING_LIBFUSE_V3
+		char* new_argv[] = { argv[0], argv[1], "-f", "-o", "allow_other,exec" };
+#else
 		char* new_argv[] = { argv[0], argv[1], "-f", "-o", "nonempty,allow_other,exec" };
+#endif
 		int new_argc = 5;
 
 		srand(time(NULL));

@@ -1,6 +1,8 @@
 #ifndef SUPERSERPENT_PARAMS_H
 #define SUPERSERPENT_PARAMS_H
 
+//#define USING_LIBFUSE_V3 // Using libfuse 2.9.9 or 3.17.2
+
 //The following values can be changed
 #define ITERATIONS_SLOTH 10000 // PBKDF2 Iterations, can be set to higher if needed but remember this value when decrypting
 #define ROUTE_LENGTH_SLOTH 256 //Already set to 256, but can be changed if needed

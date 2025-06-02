@@ -5,5 +5,9 @@
    correct usage is still '#include <fuse.h>', not '#include
    <fuse/fuse.h>'.
 */
-
-#include "fuse/fuse.h"
+#include "params.h"
+#ifdef USING_LIBFUSE_V3
+#include "fuse/fuse37/fuse.h"
+#else
+#include "fuse/fuse29/fuse.h"
+#endif

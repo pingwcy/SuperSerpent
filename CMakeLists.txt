@@ -39,6 +39,10 @@ endif()
 
 # Linux Settings
 if(UNIX)
+    option(USING_LIBFUSE_V3 "USE LIBFUSE V3" OFF)
+if(USING_LIBFUSE_V3)
+    add_compile_definitions(USING_LIBFUSE_V3)
+endif()
     add_executable(main ${SOURCE_DIR}/main.c ${SOURCE_DIR}/core/crypto_mode_sloth.c ${SOURCE_DIR}/core/utils_sloth.c ${SOURCE_DIR}/core/logic_sloth.c ${SOURCE_DIR}/core/slothfuse.c ${SOURCE_DIR}/core/test_sloth.c ${SOURCE_DIR}/core/bench_sloth.c ${SOURCE_DIR}/core/makevcvol_sloth.c)
     target_link_libraries(pbkdf2 PUBLIC whirlpool)
 	target_link_libraries(main PRIVATE rand pbkdf2 serpent serpentsimd)
@@ -65,14 +69,27 @@ if(UNIX)
     # Alpine or MUSL symbols
     if(IS_ALPINE EQUAL 0 OR MUSL_OUT MATCHES "__MUSL__")
         message(STATUS "Detected MUSL C library (Alpine or generic), enabling static linking")
+if (USING_LIBFUSE_V3)
+        target_link_libraries(main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/libfuse317_musl.a)
+        message(STATUS "Using libfuse3.17")
+else()
         target_link_libraries(main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/libfuse299_musl.a)
+        message(STATUS "Using libfuse2.99")
+endif()
         # Force static link and override possible dynamic linking
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static" CACHE STRING "Linker flags" FORCE)
         # Optional: Static link to libgcc and libstdc++
         # set(CMAKE_CXX_LINK_FLAGS "${CMAKE_CXX_LINK_FLAGS} -static-libgcc -static-libstdc++")
     else()
         message(STATUS "Detected glibc (or non-Alpine), keeping dynamic linking")
+if (USING_LIBFUSE_V3)
+        target_link_libraries(main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/libfuse317_glibc.a)
+        message(STATUS "Using libfuse3.17")
+else()
         target_link_libraries(main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/libfuse299_glibc.a)
+        message(STATUS "Using libfuse2.99")
+endif()
+
     endif()
 endif()
 
