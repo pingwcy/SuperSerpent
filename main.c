@@ -11,7 +11,9 @@
 //#define _CRTDBG_MAP_ALLOC
 //#include <crtdbg.h>
 #else
+#ifndef ENC_ONLY_MODE
 #include "core/slothfuse.h"
+#endif
 #endif
 int VERBOSE_SLOTH = 0;
 
@@ -88,7 +90,7 @@ int main(int argc, char* argv[]) {
 			else if (input[0] == 'a') {
 				make_vera_volume_main();
 			}
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(ENC_ONLY_MODE)
 
 			else if (input[0] == 'b') {
 				mount_volume_entrance();
@@ -113,8 +115,8 @@ int main(int argc, char* argv[]) {
 		return 0;
 	}
 	else {
-#if defined(_WIN32)
-		printf("Fuse Not Supported By Windows.\n");
+#if defined(_WIN32) || defined(ENC_ONLY_MODE)
+		printf("Fuse Not Supported By Windows Or Turned off for this Linux build.\n");
 #else
 		main_fuse_sloth(argc, argv);
 #endif

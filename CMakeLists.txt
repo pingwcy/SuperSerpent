@@ -1,99 +1,135 @@
-cmake_minimum_required(VERSION 3.15)
-project(SuperSerpent)
-
 # add_compile_definitions(CRYPTOPP_DISABLE_X86ASM)
 # Can manually control (Top level) CRYPTOPP_DISABLE_X86ASM (ASM switch), CRYPTOPP_DISABLE_SSSE3 (Instructions), CRYPTOPP_DISABLE_AESNI (AES), CRYPTOPP_NO_UNALIGNED_DATA_ACCESS (non-Aligned access)
 # CRYPTOPP_GENERATE_X64_MASM (Enable MASM, not influenced by X86ASM) TC_WINDOWS Series (Not needed in the project)
 
+cmake_minimum_required(VERSION 3.15)
+project(SuperSerpent
+    VERSION 1.0
+    LANGUAGES C CXX
+)
+
+# Global Compile Options
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_BUILD_TYPE Release)
+
+# Route Variables
 set(SOURCE_DIR "${CMAKE_SOURCE_DIR}")
+set(CORE_DIR "${SOURCE_DIR}/core")
+set(RAND_DIR "${SOURCE_DIR}/rand")
+set(PBKDF2_DIR "${SOURCE_DIR}/pbkdf2")
+set(SERPENT_DIR "${SOURCE_DIR}/vcserpent")
 
-# Add libs
-add_library(rand STATIC ${SOURCE_DIR}/rand/rand.c)
-add_library(whirlpool STATIC ${SOURCE_DIR}/pbkdf2/whirlpool/Whirlpool.c)
-add_library(pbkdf2 STATIC ${SOURCE_DIR}/pbkdf2/pbkdf2.c)
-add_library(serpent STATIC ${SOURCE_DIR}/vcserpent/SerpentFast.c)
-add_library(serpentsimd STATIC ${SOURCE_DIR}/vcserpent/SerpentFast_simd.cpp)
+# Project Options
+option(ENC_ONLY_MODE "Encryptor/Creator Only Mode For Unix" OFF)
+option(USING_LIBFUSE_V3 "USE LIBFUSE V3" OFF)
 
-# Windows Setting
+if(ENC_ONLY_MODE)
+    add_compile_definitions(ENC_ONLY_MODE)
+endif()
+
+if(USING_LIBFUSE_V3)
+    add_compile_definitions(USING_LIBFUSE_V3)
+endif()
+
+# Libs Sources
+set(RAND_SOURCES ${RAND_DIR}/rand.c)
+set(WHIRLPOOL_SOURCES ${PBKDF2_DIR}/whirlpool/Whirlpool.c)
+set(PBKDF2_SOURCES ${PBKDF2_DIR}/pbkdf2.c)
+set(SERPENT_SOURCES ${SERPENT_DIR}/SerpentFast.c)
+set(SERPENT_SIMD_SOURCES ${SERPENT_DIR}/SerpentFast_simd.cpp)
+
+# Core Sources
+set(CORE_SOURCES
+    ${CORE_DIR}/crypto_mode_sloth.c
+    ${CORE_DIR}/utils_sloth.c
+    ${CORE_DIR}/logic_sloth.c
+    ${CORE_DIR}/test_sloth.c
+    ${CORE_DIR}/bench_sloth.c
+    ${CORE_DIR}/makevcvol_sloth.c
+)
+
+if(UNIX AND NOT ENC_ONLY_MODE)
+    list(APPEND CORE_SOURCES ${CORE_DIR}/slothfuse.c)
+endif()
+
+# Create Static Libs
+add_library(rand STATIC ${RAND_SOURCES})
+add_library(whirlpool STATIC ${WHIRLPOOL_SOURCES})
+add_library(pbkdf2 STATIC ${PBKDF2_SOURCES})
+add_library(serpent STATIC ${SERPENT_SOURCES})
+add_library(serpentsimd STATIC ${SERPENT_SIMD_SOURCES})
+
+# Libs Dependencies
+target_link_libraries(pbkdf2 PUBLIC whirlpool)
+
+# Create Executable
+add_executable(main ${SOURCE_DIR}/main.c ${CORE_SOURCES})
+
+# Executable Dependencies
+target_link_libraries(main PRIVATE 
+    rand 
+    pbkdf2 
+    serpent 
+    serpentsimd
+)
+
+# Platform Settings
 if(WIN32)
-	add_executable(main ${SOURCE_DIR}/main.c ${SOURCE_DIR}/core/crypto_mode_sloth.c ${SOURCE_DIR}/core/utils_sloth.c ${SOURCE_DIR}/core/logic_sloth.c ${SOURCE_DIR}/core/test_sloth.c ${SOURCE_DIR}/core/bench_sloth.c ${SOURCE_DIR}/core/makevcvol_sloth.c)
-
-	# Dependencies
-	target_link_libraries(pbkdf2 PUBLIC whirlpool)
-	target_link_libraries(main PRIVATE rand pbkdf2 serpent serpentsimd)
-
-    # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /utf-8")
-    # set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /utf-8")
-
+    # Windows
     target_compile_options(main PRIVATE "/MT")
     target_compile_options(rand PRIVATE "/MT")
     target_compile_options(whirlpool PRIVATE "/MT")
     target_compile_options(pbkdf2 PRIVATE "/MT")
     target_compile_options(serpent PRIVATE "/MT")
     target_compile_options(serpentsimd PRIVATE "/MT")
+    
     target_link_libraries(main PRIVATE AdvAPI32)
-endif()
-
-# Linux Settings
-if(UNIX)
-    option(USING_LIBFUSE_V3 "USE LIBFUSE V3" OFF)
-if(USING_LIBFUSE_V3)
-    add_compile_definitions(USING_LIBFUSE_V3)
-endif()
-    add_executable(main ${SOURCE_DIR}/main.c ${SOURCE_DIR}/core/crypto_mode_sloth.c ${SOURCE_DIR}/core/utils_sloth.c ${SOURCE_DIR}/core/logic_sloth.c ${SOURCE_DIR}/core/slothfuse.c ${SOURCE_DIR}/core/test_sloth.c ${SOURCE_DIR}/core/bench_sloth.c ${SOURCE_DIR}/core/makevcvol_sloth.c)
-    target_link_libraries(pbkdf2 PUBLIC whirlpool)
-	target_link_libraries(main PRIVATE rand pbkdf2 serpent serpentsimd)
+elseif(UNIX)
+    # Unix/Linux
     find_package(Threads REQUIRED)
-    target_link_libraries(main PRIVATE ${CMAKE_THREAD_LIBS_INIT})
+    target_link_libraries(main PRIVATE Threads::Threads)
 
-    # Stage 1: Check if Alpine
+    # Detect MUSL C
+    include(CheckSymbolExists)
+    set(CMAKE_REQUIRED_DEFINITIONS -dM)
+    check_symbol_exists(__MUSL__ "" HAVE_MUSL)
+    unset(CMAKE_REQUIRED_DEFINITIONS)
+
+    # Check if Alpine Linux
     execute_process(
         COMMAND grep -q "ID=alpine" /etc/os-release 2>/dev/null
         RESULT_VARIABLE IS_ALPINE
     )
 
-    # Stage 2: Detect MUSL
-    file(WRITE "${CMAKE_BINARY_DIR}/musl_test.c" "")
-    try_compile(
-        HAVE_MUSL
-        "${CMAKE_BINARY_DIR}"
-        SOURCES "${CMAKE_BINARY_DIR}/musl_test.c"
-        COMPILE_DEFINITIONS "-dM -E"
-        OUTPUT_VARIABLE MUSL_OUT
-    )
-    file(REMOVE "${CMAKE_BINARY_DIR}/musl_test.c")
-
-    # Alpine or MUSL symbols
-    if(IS_ALPINE EQUAL 0 OR MUSL_OUT MATCHES "__MUSL__")
+    if(IS_ALPINE EQUAL 0 OR HAVE_MUSL)
         message(STATUS "Detected MUSL C library (Alpine or generic), enabling static linking")
-if (USING_LIBFUSE_V3)
-        target_link_libraries(main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/libfuse317_musl.a)
-        message(STATUS "Using libfuse3.17")
-else()
-        target_link_libraries(main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/libfuse299_musl.a)
-        message(STATUS "Using libfuse2.99")
-endif()
-        # Force static link and override possible dynamic linking
-        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static" CACHE STRING "Linker flags" FORCE)
-        # Optional: Static link to libgcc and libstdc++
-        # set(CMAKE_CXX_LINK_FLAGS "${CMAKE_CXX_LINK_FLAGS} -static-libgcc -static-libstdc++")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static")
+        
+        if(NOT ENC_ONLY_MODE)
+            if(USING_LIBFUSE_V3)
+                set(FUSE_LIB_NAME "libfuse317_musl.a")
+            else()
+                set(FUSE_LIB_NAME "libfuse299_musl.a")
+            endif()
+            target_link_libraries(main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/${FUSE_LIB_NAME})
+            message(STATUS "Using ${FUSE_LIB_NAME}")
+        endif()
     else()
         message(STATUS "Detected glibc (or non-Alpine), keeping dynamic linking")
-if (USING_LIBFUSE_V3)
-        target_link_libraries(main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/libfuse317_glibc.a)
-        message(STATUS "Using libfuse3.17")
-else()
-        target_link_libraries(main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/libfuse299_glibc.a)
-        message(STATUS "Using libfuse2.99")
-endif()
-
+        if(NOT ENC_ONLY_MODE)
+            if(USING_LIBFUSE_V3)
+                set(FUSE_LIB_NAME "libfuse317_glibc.a")
+            else()
+                set(FUSE_LIB_NAME "libfuse299_glibc.a")
+            endif()
+            target_link_libraries(main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/${FUSE_LIB_NAME})
+            message(STATUS "Using ${FUSE_LIB_NAME}")
+        endif()
     endif()
 endif()
 
-# Output bin path
+# Output Executable Dir
 set_target_properties(main PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )

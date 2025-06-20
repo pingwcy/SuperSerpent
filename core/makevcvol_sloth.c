@@ -743,7 +743,7 @@ static uint64_t parse_volume_header(uint8_t *in_buf, uint8_t *OutMasterKey) {
     // Done
     return vol_size1;
 }
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(ENC_ONLY_MODE)
 void run_cmd(const char *cmd, char *const argv[]) {
     pid_t pid = fork();
     if (pid == 0) {

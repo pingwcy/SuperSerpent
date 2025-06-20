@@ -733,9 +733,9 @@ int main_fuse_sloth(int argc, char* argv[]) {
 	}
 	else{
 #ifdef USING_LIBFUSE_V3
-		printf("Using libfuse 3.17");
+		printf("Using libfuse 3.17\n");
 #else
-		printf("Using libfuse 2.99");
+		printf("Using libfuse 2.99\n");
 #endif
 		if (get_user_input("Please Enter Password: ", user_password, sizeof(user_password)) != 0) {
 			//continue;
