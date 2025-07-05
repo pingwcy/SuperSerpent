@@ -621,13 +621,13 @@ static int get_key_volume(const char* filename, uint8_t *outHeaderkey){
     return 0;
 
 }
-static int return_volume_header(const char* filename, uint8_t *outbuffer){
+static int return_volume_header(const char* filename, uint8_t *buffer){
     FILE *file = fopen(filename, "rb");
     if (file == NULL) {
         perror("Can't Open File");
         return 1;
     }
-    uint8_t buffer[VC_VOLUME_HEADER_SIZE];
+    //uint8_t buffer[VC_VOLUME_HEADER_SIZE];
     size_t salt = fread(buffer, sizeof(uint8_t), VC_VOLUME_HEADER_SIZE, file);
 
     if (salt < VC_VOLUME_HEADER_SIZE) {
