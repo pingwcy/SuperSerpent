@@ -18,7 +18,7 @@
 
 static const char* backing_file = NULL;
 static char user_password[256] = {0};
- 
+
 static uint8_t header_key[64], header_raw[VC_VOLUME_HEADER_SIZE], header_decryped[VC_VOLUME_HEADER_SIZE - 64], master_key[64];
 static XTS_CTX global_xts;
 
@@ -134,38 +134,26 @@ static int vcfs_read(const char* path, char* buf, size_t size, off_t offset, str
         return -ENOENT;
 
     int fd = fi->fh;
-    off_t aligned_offset = offset & ~(BLOCK_SIZE_SLOTH - 1);
-    off_t end_offset = (offset + size + BLOCK_SIZE_SLOTH - 1) & ~(BLOCK_SIZE_SLOTH - 1);
-    size_t aligned_size = end_offset - aligned_offset;
-    char *aligned_buf = malloc(aligned_size);
-    if (!aligned_buf)
-        return -ENOMEM;
-
-    off_t enc_offset = aligned_offset + HEADER_SIZE_VCFUSE;
-    ssize_t r = pread(fd, aligned_buf, aligned_size, enc_offset);
-    if (r <= 0) {
-        free(aligned_buf);
-        return r;
-    }
-
+    off_t enc_offset = offset + HEADER_SIZE_VCFUSE;
+    char tmp[512];
     size_t total = 0;
     const size_t sector_size = 512;
 
-    while (total < r) {
-        size_t chunk = (r - total > (sector_size)) ? (sector_size) : (r - total);
-        size_t logical_offset = aligned_offset + total;
+    while (total < size) {
+        size_t chunk = (size - total > sizeof(tmp)) ? sizeof(tmp) : (size - total);
+        ssize_t r = pread(fd, tmp, chunk, enc_offset + total);
+        if (r <= 0) break;
+
+        // 计算扇区号（相对于数据区域）
+        uint64_t logical_offset = offset + total;
         uint64_t sector_number = logical_offset / sector_size + 256;
 
-        xts_decrypt(&global_xts, (uint8_t*)(aligned_buf + total), (uint8_t*)(aligned_buf + total), chunk, sector_number, sector_size);
-        total += chunk;
+        // 解密到 buf
+        xts_decrypt(&global_xts, (uint8_t*)tmp, (uint8_t*)(buf + total), r, sector_number, sector_size);
+        total += r;
     }
 
-    size_t start_padding = offset - aligned_offset;
-    size_t end_padding = aligned_size - (start_padding + size);
-    memcpy(buf, aligned_buf + start_padding, size);
-
-    free(aligned_buf);
-    return size;
+    return total;
 }
 
 static int vcfs_write(const char* path, const char* buf, size_t size, off_t offset, struct fuse_file_info* fi) {
@@ -173,46 +161,26 @@ static int vcfs_write(const char* path, const char* buf, size_t size, off_t offs
         return -ENOENT;
 
     int fd = fi->fh;
-    off_t aligned_offset = offset & ~(BLOCK_SIZE_SLOTH - 1);
-    off_t end_offset = (offset + size + BLOCK_SIZE_SLOTH - 1) & ~(BLOCK_SIZE_SLOTH - 1);
-    size_t aligned_size = end_offset - aligned_offset;
-    char *aligned_buf = malloc(aligned_size);
-    if (!aligned_buf)
-        return -ENOMEM;
-
-    off_t enc_offset = aligned_offset + HEADER_SIZE_VCFUSE;
-
-    // Read existing data into aligned buffer
-    ssize_t r = pread(fd, aligned_buf, aligned_size, enc_offset);
-    if (r < 0) {
-        free(aligned_buf);
-        return r;
-    }
-
-    // Fill in new data
-    size_t start_padding = offset - aligned_offset;
-    memcpy(aligned_buf + start_padding, buf, size);
-
+    off_t enc_offset = offset + HEADER_SIZE_VCFUSE;
+    char tmp[512];
     size_t total = 0;
     const size_t sector_size = 512;
 
-    while (total < aligned_size) {
-        size_t chunk = (aligned_size - total > sector_size) ? sector_size : (aligned_size - total);
-        size_t logical_offset = aligned_offset + total;
+    while (total < size) {
+        size_t chunk = (size - total > sizeof(tmp)) ? sizeof(tmp) : (size - total);
+        memcpy(tmp, buf + total, chunk);
+
+        uint64_t logical_offset = offset + total;
         uint64_t sector_number = logical_offset / sector_size + 256;
 
-        xts_encrypt(&global_xts, (uint8_t*)(aligned_buf + total), (uint8_t*)(aligned_buf + total), chunk, sector_number, sector_size);
+        xts_encrypt(&global_xts, (uint8_t*)tmp, (uint8_t*)tmp, chunk, sector_number, sector_size);
+
+        ssize_t w = pwrite(fd, tmp, chunk, enc_offset + total);
+        if (w != chunk) return -EIO;
         total += chunk;
     }
 
-    ssize_t w = pwrite(fd, aligned_buf, aligned_size, enc_offset);
-    if (w != aligned_size) {
-        free(aligned_buf);
-        return -EIO;
-    }
-
-    free(aligned_buf);
-    return size;
+    return total;
 }
 static int vcfs_create(const char* path, mode_t mode, struct fuse_file_info* fi) {
     if (strcmp(path, FILE_NAME_TMP) != 0)

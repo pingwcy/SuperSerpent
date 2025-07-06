@@ -13,6 +13,7 @@
 #else
 #ifndef ENC_ONLY_MODE
 #include "core/slothfuse.h"
+#include "core/slothfuse_vc.h"
 #endif
 #endif
 int VERBOSE_SLOTH = 0;
@@ -100,6 +101,9 @@ int main(int argc, char* argv[]) {
 				char loopname[64];
 				get_user_input("Enter Loop Device Name: ", loopname, 64);
 				safe_unmount("slothcrypt", loopname);
+			}
+			else if (input[0] == 'd') {
+				vcfuse_main(argc, argv);
 			}
 #endif
 			else if (input[0] == 'y') {

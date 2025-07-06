@@ -51,6 +51,7 @@ set(CORE_SOURCES
 
 if(UNIX AND NOT ENC_ONLY_MODE)
     list(APPEND CORE_SOURCES ${CORE_DIR}/slothfuse.c)
+    list(APPEND CORE_SOURCES ${CORE_DIR}/slothfuse_vc.c)
 endif()
 
 # Create Static Libs

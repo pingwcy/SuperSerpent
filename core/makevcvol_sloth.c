@@ -593,7 +593,7 @@ static int build_volume_header(uint8_t *out_buf, uint64_t volume_size, uint64_t 
     return 0;
 }
 
-static int get_key_volume(const char* filename, uint8_t *outHeaderkey){
+int get_key_volume(const char* filename, uint8_t *outHeaderkey){
     char password[PWD_MAX_LENGTH_SLOTH];
     FILE *file = fopen(filename, "rb");
     if (file == NULL) {
@@ -621,7 +621,7 @@ static int get_key_volume(const char* filename, uint8_t *outHeaderkey){
     return 0;
 
 }
-static int return_volume_header(const char* filename, uint8_t *buffer){
+int return_volume_header(const char* filename, uint8_t *buffer){
     FILE *file = fopen(filename, "rb");
     if (file == NULL) {
         perror("Can't Open File");
@@ -643,7 +643,7 @@ static int return_volume_header(const char* filename, uint8_t *buffer){
     return 0;
 
 }
-static uint64_t parse_volume_header(uint8_t *in_buf, uint8_t *OutMasterKey) {
+uint64_t parse_volume_header(uint8_t *in_buf, uint8_t *OutMasterKey) {
     uint8_t *p = in_buf;
 
     // 1. Salt (64 bytes)
