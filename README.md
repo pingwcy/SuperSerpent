@@ -7,7 +7,7 @@
 
 1. 🔐 **Interactive File Encryption** – works on Linux & Windows  
 2. 🧊 **Transparent Filesystem Encryption** – Linux-only, FUSE-based (like gocryptfs)  
-3. 📦 **Encrypted Volume Support** – VeraCrypt-compatible volumes, with Linux-native mounting via `dm-crypt`
+3. 📦 **Encrypted Volume Support** – VeraCrypt-compatible volumes, with Linux-native mounting via `dm-crypt` or `FUSE`
 
 > ✅ Open-source, educational, and experimental. Built with security and portability in mind.
 
@@ -21,7 +21,7 @@
 - **🔄 Filesystem Encryption** (Linux-only): A FUSE-based encrypted filesystem (like gocryptfs).
 - **💽 Volume Container Support**:
   - Create VeraCrypt-compatible volumes on Linux and Windows
-  - Mount volumes via `dm-crypt` on Linux
+  - Mount volumes via `dm-crypt` or `FUSE` on Linux
   - Windows currently supports **only creation**, mounting requires the VeraCrypt software.
 
 ### 🔐 Cryptography Details
@@ -46,7 +46,7 @@
 
 | Platform | File Encryption | Filesystem Encryption | Volume Encryption |
 |----------|------------------|------------------------|--------------------|
-| **Linux**    | ✅ Supported     | ✅ Supported (via FUSE) | ✅ Full support (via `dm-crypt`) |
+| **Linux**    | ✅ Supported     | ✅ Supported (via FUSE) | ✅ Full support (via `dm-crypt` or `FUSE`) |
 | **Windows**  | ✅ Supported     | 🚧 Planned *(via WinFsp or filter driver)* | 🚧 Create-only (mounting requires VeraCrypt) |
 
 ---
@@ -111,9 +111,9 @@ All files written to ~/secure are transparently encrypted and stored in ~/vault.
 ## 🛣️ Roadmap
  Implement filesystem encryption on Windows (via WinFsp or filter driver)
 
- Add a GUI for this tool
+ // Add a GUI for this tool
 
- // Explore Android support
+ Explore Android support (It already works with ROOT in Termux)
 
 ## ⚠️ Disclaimer
 This is an experimental project intended for educational use only.
