@@ -1,10 +1,11 @@
-#define FUSE_USE_VERSION 31
+// #define FUSE_USE_VERSION 31
 #include "../params.h"
 #include "../fuse.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <unistd.h>
 #include <errno.h>
 #include <sys/stat.h>
@@ -14,6 +15,8 @@
 #include "../pbkdf2/pbkdf2.h"
 #include "../rand/rand.h"
 #include "makevcvol_sloth.h"
+#include <sys/mount.h>
+
 #define FILE_NAME_TMP "/vcfile"
 
 static const char* backing_file = NULL;
@@ -91,7 +94,11 @@ static int init_encryption() {
     return 0;
 }
 
+#ifdef USING_LIBFUSE_V3
+static int vcfs_getattr(const char* path, struct stat* stbuf, struct fuse_file_info *fi) {
+#else
 static int vcfs_getattr(const char* path, struct stat* stbuf) {
+#endif
     memset(stbuf, 0, sizeof(struct stat));
 
     if (strcmp(path, "/") == 0) {
@@ -203,7 +210,11 @@ static int vcfs_create(const char* path, mode_t mode, struct fuse_file_info* fi)
     return 0;
 }
 
+#ifdef USING_LIBFUSE_V3
+static int vcfs_truncate(const char* path, off_t size, struct fuse_file_info *fi) {
+#else
 static int vcfs_truncate(const char* path, off_t size) {
+#endif
     if (strcmp(path, FILE_NAME_TMP) != 0)
         return -ENOENT;
 
@@ -214,17 +225,25 @@ static int vcfs_release(const char* path, struct fuse_file_info* fi) {
     if (fi->fh >= 0) close(fi->fh);
     return 0;
 }
-static int vcfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
-                       off_t offset, struct fuse_file_info *fi) {
+#ifdef USING_LIBFUSE_V3
+static int vcfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi, enum fuse_readdir_flags flags) {
+#else
+static int vcfs_readdir(const char* path, void* buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info* fi) {
+#endif
     (void) offset;
     (void) fi;
 
     if (strcmp(path, "/") != 0)
         return -ENOENT;
-
+#ifdef USING_LIBFUSE_V3
+	filler(buf, ".", NULL, 0, 0);
+	filler(buf, "..", NULL, 0, 0);
+    filler(buf, FILE_NAME_TMP + 1, NULL, 0, 0);  // +1 去掉前面的'/'
+#else
     filler(buf, ".", NULL, 0);
     filler(buf, "..", NULL, 0);
     filler(buf, FILE_NAME_TMP + 1, NULL, 0);  // +1 去掉前面的'/'
+#endif
 
     return 0;
 }
@@ -240,32 +259,125 @@ static struct fuse_operations vcfs_oper = {
     .readdir = vcfs_readdir,
 };
 
+void safe_unmount_vcfuse(const char *loopdev) {
+    // 1. Unmount Loop Device
+    if (access(loopdev, F_OK) == 0) {
+        printf("[*] Attempting to detach loop device %s\n", loopdev);
+
+        char *losetup_argv[] = {"losetup", "-d", (char *)loopdev, NULL};
+        run_cmd("losetup", losetup_argv);
+    } else {
+        printf("[*] Loop device %s does not exist, skipping losetup -d.\n", loopdev);
+    }
+
+    // 2. Unmount Fuse
+    umount("/tmp/slothvc");
+    
+    printf("[*] Unmount complete.\n");
+}
+
+struct fuse_thread_args {
+    int argc;
+    char **argv;
+};
+
+static void* run_fuse(void* arg) {
+    struct fuse_thread_args *args = (struct fuse_thread_args*)arg;
+    int ret = fuse_main(args->argc, args->argv, &vcfs_oper, NULL);
+    
+    // 清理资源
+    for (int i = 0; i < args->argc; i++) {
+        free(args->argv[i]);
+    }
+    free(args->argv);
+    free(args);
+    
+    return NULL;
+}
+
 int vcfuse_main(int argc, char* argv[]) {
     char file_path[512];
-    char* fuse_argv[20];
+    char mount_point[] = "/tmp/slothvc";
+    
+    // 获取用户输入
+    get_user_input("Enter the Volume Name: ", file_path, 512);
+
+    
+    if ((backing_file = strdup(file_path)) == NULL) {
+        fprintf(stderr, "Memory allocation failed.\n");
+        return 1;
+    }
+    
+    get_user_input("Enter Password: ", user_password, sizeof(user_password));
+
+    
+    // 初始化加密
+    if (init_encryption() != 0) {
+        fprintf(stderr, "Encryption initialization failed.\n");
+        free(backing_file);
+        return 1;
+    }
+    
+    // 准备FUSE参数
+    const char *fuse_options[] = {
+        "-f",
+        "-o", "allow_other",
+#ifndef USING_LIBFUSE_V3
+        "-o", "nonempty",
+#endif
+        NULL
+    };
+    
+    // 计算参数数量
     int fuse_argc = 0;
-
-    // Get backing file
-    if (get_user_input("Enter the Volume Name: ", file_path, sizeof(file_path)) != 0) {
-        fprintf(stderr, "Read Volume Failed.\n");
+    while (fuse_options[fuse_argc] != NULL) fuse_argc++;
+    
+    // 分配参数内存
+    struct fuse_thread_args *args = malloc(sizeof(struct fuse_thread_args));
+    if (!args) {
+        fprintf(stderr, "Memory allocation failed.\n");
+        free(backing_file);
         return 1;
     }
-    backing_file = strdup(file_path);  // backing_file
-
-    // Get Password
-    if (get_user_input("Enter Password: ", user_password, sizeof(user_password)) != 0) {
-        fprintf(stderr, "Fail to Read Password.\n");
+    
+    args->argc = fuse_argc + 2; // 程序名 + 挂载点 + 选项
+    args->argv = malloc((args->argc + 1) * sizeof(char*));
+    if (!args->argv) {
+        fprintf(stderr, "Memory allocation failed.\n");
+        free(args);
+        free(backing_file);
         return 1;
     }
+    
+    // 填充参数
+    args->argv[0] = strdup(argv[0]); // 程序名
+    args->argv[1] = strdup(mount_point); // 挂载点
+    
+    for (int i = 0; i < fuse_argc; i++) {
+        args->argv[i+2] = strdup(fuse_options[i]);
+    }
+    args->argv[args->argc] = NULL; // 终止NULL
+    mkdir("/tmp/slothvc", 0755);
+    // 创建FUSE线程
+    pthread_t fuse_thread;
+    if (pthread_create(&fuse_thread, NULL, run_fuse, args) != 0) {
+        fprintf(stderr, "Failed to create FUSE thread.\n");
+        for (int i = 0; i < args->argc; i++) free(args->argv[i]);
+        free(args->argv);
+        free(args);
+        free(backing_file);
+        return 1;
+    }
+    pthread_detach(fuse_thread);
+    // 设置loop设备
+    const char *loopdev = find_unused_loopdev();
+    if (!loopdev) {
+        fprintf(stderr, "No available loop device found.\n");
+        return 1;
+    }
+    printf("Using loop device: %s\n", loopdev);
 
-    // 构造 FUSE 参数
-    fuse_argv[fuse_argc++] = argv[0];
-    fuse_argv[fuse_argc++] = "/tmp/slothvc";
-    fuse_argv[fuse_argc++] = "-f";          // 前台运行
-    fuse_argv[fuse_argc++] = "-o";          // 挂载选项开始
-    fuse_argv[fuse_argc++] = "allow_other"; // 允许其他用户访问
-    fuse_argv[fuse_argc++] = "-o";          // 添加更多选项
-    fuse_argv[fuse_argc++] = "nonempty";    // 允许挂载到非空目录
-    init_encryption();
-    return fuse_main(fuse_argc, fuse_argv, &vcfs_oper, NULL);
+    run_losetup(loopdev, "/tmp/slothvc/vcfile");
+
+    return 0;
 }

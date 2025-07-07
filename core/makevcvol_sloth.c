@@ -786,7 +786,7 @@ void safe_unmount(const char *mapper_name, const char *loopdev) {
 }
 
 
-static void run_losetup(const char *loopdev, const char *imagefile) {
+void run_losetup(const char *loopdev, const char *imagefile) {
     pid_t pid = fork();
     if (pid == 0) {
         // Child: exec losetup
@@ -836,7 +836,7 @@ static void run_dmsetup(const char *mapname, const char *table_line) {
     }
 }
 
-static char *find_unused_loopdev() {
+char *find_unused_loopdev() {
     FILE *fp = popen("losetup --find", "r");
     if (!fp) {
         perror("popen");

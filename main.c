@@ -105,6 +105,11 @@ int main(int argc, char* argv[]) {
 			else if (input[0] == 'd') {
 				vcfuse_main(argc, argv);
 			}
+			else if (input[0] == 'e') {
+				char loopname2[64];
+				get_user_input("Enter Loop Device Name: ", loopname2, 64);
+				safe_unmount_vcfuse(loopname2);
+			}
 #endif
 			else if (input[0] == 'y') {
 				hashstr_sloth();
