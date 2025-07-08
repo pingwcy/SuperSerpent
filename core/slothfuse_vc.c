@@ -314,7 +314,7 @@ int vcfuse_main(int argc, char* argv[]) {
     // 初始化加密
     if (init_encryption() != 0) {
         fprintf(stderr, "Encryption initialization failed.\n");
-        free(backing_file);
+        //free(backing_file);
         return 1;
     }
     
@@ -336,7 +336,7 @@ int vcfuse_main(int argc, char* argv[]) {
     struct fuse_thread_args *args = malloc(sizeof(struct fuse_thread_args));
     if (!args) {
         fprintf(stderr, "Memory allocation failed.\n");
-        free(backing_file);
+        //free(backing_file);
         return 1;
     }
     
@@ -345,7 +345,7 @@ int vcfuse_main(int argc, char* argv[]) {
     if (!args->argv) {
         fprintf(stderr, "Memory allocation failed.\n");
         free(args);
-        free(backing_file);
+        //free(backing_file);
         return 1;
     }
     
@@ -365,7 +365,7 @@ int vcfuse_main(int argc, char* argv[]) {
         for (int i = 0; i < args->argc; i++) free(args->argv[i]);
         free(args->argv);
         free(args);
-        free(backing_file);
+        //free(backing_file);
         return 1;
     }
     pthread_detach(fuse_thread);
