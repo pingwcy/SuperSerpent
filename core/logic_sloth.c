@@ -169,11 +169,11 @@ int enc_sloth(int mode) {
 
 		gcm_encrypt_sloth((unsigned char*)plaintext, plaintext_len, derived_key, nonce, tag, encrypted_text);
 
-		printf("Encrypted: ");
-		for (size_t i = 0; i < plaintext_len; i++) printf("%02X ", plaintext[i]);
-		printf("\nTag: ");
-		for (size_t i = 0; i < TAG_SIZE_SLOTH; i++) printf("%02X ", tag[i]);
-		printf("\n");
+		//printf("Encrypted: ");
+		//for (size_t i = 0; i < plaintext_len; i++) printf("%02X ", plaintext[i]);
+		//printf("\nTag: ");
+		//for (size_t i = 0; i < TAG_SIZE_SLOTH; i++) printf("%02X ", tag[i]);
+		//printf("\n");
 
 		size_t total_len = sizeof(salt) + sizeof(nonce) + sizeof(tag) + plaintext_len;
 		unsigned char* output = (unsigned char*)malloc(total_len);
@@ -570,7 +570,7 @@ int enc_file_sloth(int mode) {
 }
 
 int dec_file_sloth(int mode) {
-
+	int status_for_gcm = 0;
 	//Intial all shared variables
 	char password[PWD_MAX_LENGTH_SLOTH], input_path[ROUTE_LENGTH_SLOTH], output_path[ROUTE_LENGTH_SLOTH];
 	uint8_t salt[SALT_SIZE_SLOTH], derived_key[KEY_SIZE_SLOTH];
@@ -714,14 +714,17 @@ int dec_file_sloth(int mode) {
 			print_hex_sloth("Nonce", nonce, sizeof(nonce));
 			if (fread(tag, 1, TAG_SIZE_SLOTH, infile) != TAG_SIZE_SLOTH) {
 				handle_error_sloth("Failed to read tag");
+				status_for_gcm = 1;
 			}
 			print_hex_sloth("TAG", tag, sizeof(tag));
 			size_t ciphertext_len = fread(ciphertext, 1, GCM_BLOCK_SIZE_SLOTH, infile);
 			if (ciphertext_len == 0) {
 				handle_error_sloth("Failed to read ciphertext");
+				status_for_gcm = 1;
 			}
 			if (gcm_decrypt_sloth(ciphertext, ciphertext_len, derived_key, nonce, tag) != 0) {
 				handle_error_sloth("Authentication failed!");
+				status_for_gcm = 1;
 			}
 			fwrite(ciphertext, 1, ciphertext_len, outfile);
 		}
@@ -739,7 +742,7 @@ int dec_file_sloth(int mode) {
 	fclose(infile);
 	fclose(outfile);
 
-	return 0;
+	return status_for_gcm;
 }
 int hashstr_sloth() {
 	char plaintext[PLAINTEXT_MAX_LENGTH_SLOTH];
