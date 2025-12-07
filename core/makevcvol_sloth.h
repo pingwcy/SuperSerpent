@@ -14,6 +14,7 @@ int return_volume_header(const char* filename, uint8_t *outbuffer);
 int get_key_volume(const char* filename, uint8_t *outHeaderkey);
 char *find_unused_loopdev();
 void run_losetup(const char *loopdev, const char *imagefile);
+void run_cmd(const char *cmd, char *const argv[]);
 #endif
 
 #ifdef __cplusplus

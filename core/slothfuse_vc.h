@@ -1,5 +1,5 @@
-#ifndef SLOTH_FUSE_HEADER
-#define SLOTH_FUSE_HEADER
+#ifndef SLOTH_FUSEVC_HEADER
+#define SLOTH_FUSEVC_HEADER
 #ifdef __cplusplus
 extern "C" {
 #endif
